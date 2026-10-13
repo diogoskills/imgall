@@ -247,7 +247,20 @@
     }
     return name;
   }
-  const api = { validateUrl, parseSrcset, imageUrl, imageCandidates, resolveImage, youtubeContext, youtubeImageUrls, backgroundUrl, imageExtension, filename };
+  function safeTitle(raw) {
+    let title = String(raw || '').normalize('NFC').replace(/[<>:"/\\|?*\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, '_').replace(/\s+/g, ' ').trim().replace(/[. ]+$/g, '');
+    title = title.replace(/\.(?:jpe?g|png|webp|avif|gif|svg|bmp|tiff?|ico)$/i, '');
+    title = Array.from(title).slice(0,60).join('').replace(/[. ]+$/g,'');
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(title)) title = '_' + title;
+    return title;
+  }
+  function downloadFilename(url, title, mime) {
+    const clean = safeTitle(title);
+    if (!clean) return filename(url,mime);
+    const extension = imageExtension(mime) || /\.(jpg|jpeg|png|webp|avif|gif|svg|bmp|tiff?|ico)$/i.exec(filename(url))?.[1].toLowerCase();
+    return clean + (extension ? '.' + extension : '');
+  }
+  const api = { validateUrl, parseSrcset, imageUrl, imageCandidates, resolveImage, youtubeContext, youtubeImageUrls, backgroundUrl, imageExtension, filename, safeTitle, downloadFilename };
   root.ClickImageUtils = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

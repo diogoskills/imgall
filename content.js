@@ -74,6 +74,7 @@
     return false;
   }
   function move(event) {
+    if (resolving) return;
     selected = candidate(event);
     if (!selected) { box.style.display = 'none'; return; }
     const r = selected.rect;
@@ -98,17 +99,19 @@
     const target = candidate(event);
     if (!target) return;
     event.preventDefault(); event.stopImmediatePropagation();
+    if (resolving) return;
     const selectionToken = token;
-    deactivate();
+    clearHighlight();
     resolving = true;
     feedback('Buscando a maior imagem disponível…');
     try {
       await chrome.runtime.sendMessage({type:'CLICKIMAGE_RESOLVING',token:selectionToken});
       const url = await utils.resolveImage(target.el, document.baseURI, target.url);
-      if (!url) { await chrome.runtime.sendMessage({type:'CLICKIMAGE_CANCELLED',token:selectionToken}); feedback('Esta imagem não possui uma URL HTTP/HTTPS direta acessível.'); return; }
+      if (!active || token !== selectionToken) return;
+      if (!url) { deactivate(); await chrome.runtime.sendMessage({type:'CLICKIMAGE_CANCELLED',token:selectionToken}); feedback('Esta imagem não possui uma URL HTTP/HTTPS direta acessível.'); return; }
       const result = await chrome.runtime.sendMessage({ type: 'CLICKIMAGE_PREVIEW', token: selectionToken, url, previewUrl: target.url, label: target.el.getAttribute('alt') || 'Imagem selecionada' });
-      feedback(result?.ok ? 'Imagem no painel ClickImage. Confirme em Baixar.' : result?.error || 'Não foi possível baixar esta imagem.');
-    } catch { chrome.runtime.sendMessage({type:'CLICKIMAGE_CANCELLED',token:selectionToken}).catch(()=>{}); feedback('A extensão foi desconectada. Recarregue a página e tente novamente.'); }
+      feedback(result?.ok ? 'Imagem no painel. Continue selecionando · ESC encerra.' : result?.error || 'Não foi possível guardar esta imagem.');
+    } catch { deactivate(); chrome.runtime.sendMessage({type:'CLICKIMAGE_CANCELLED',token:selectionToken}).catch(()=>{}); feedback('A extensão foi desconectada. Recarregue a página e tente novamente.'); }
     finally { resolving = false; }
   }
   chrome.runtime.onMessage.addListener((message, sender, reply) => {

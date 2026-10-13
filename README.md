@@ -14,11 +14,17 @@ Nenhuma compilação ou instalação npm é necessária para usar a extensão.
 
 ## Como usar
 
-Requer Chrome **116 ou superior**. Abra uma página HTTP/HTTPS e clique no ícone ClickImage: o painel lateral abre e o modo de seleção é ativado. O contorno roxo indica a imagem. Clique para buscar a maior variante acessível; a seleção encerra e **nenhum download é iniciado ainda**.
+Requer Chrome **116 ou superior**. Abra uma página HTTP/HTTPS e clique no ícone ClickImage: ele **somente abre o painel**, sem ativar a seleção automaticamente. Clique em **Caçar imagem** dentro da interface para começar.
 
-Confira a miniatura pequena (58px), nome, domínio e resolução no painel. Clique em **Baixar imagem** para confirmar, em **×** para remover ou em **Selecionar imagem** para escolher outra. ESC cancela a seleção na página. Cada aba mantém sua própria seleção durante a sessão do navegador; fechar o painel não apaga a prévia. Uma URL pode expirar com o tempo.
+O contorno roxo mostra a foto sob o mouse. Cada clique busca a maior variante acessível e adiciona uma miniatura à lista, **sem iniciar download**. O modo continua ativo para selecionar outras imagens; use **ESC** na página ou **Parar seleção** no painel para encerrar. As imagens coletadas são preservadas. Selecionar a mesma URL novamente não duplica o cartão.
 
-A busca pode levar até oito segundos. A miniatura só é reduzida visualmente com CSS; o download recebe o arquivo encontrado sem transformação. Se o servidor bloquear a prévia, o painel informa isso e permite confirmar a URL mesmo assim. O nome e o formato final continuam seguindo o MIME informado pelo Chrome.
+Edite o campo **Nome do arquivo** de cada imagem e clique em seu próprio **Baixar imagem**. O nome é salvo antes de confirmar o download; caracteres inválidos são tratados e a extensão correta segue o MIME quando disponível. O título aceita até 60 caracteres Unicode e preserva acentos. Use **×** para remover apenas aquela imagem. É possível caçar novas imagens enquanto outras são baixadas.
+
+A partir de quatro imagens a lista ganha rolagem, com altura limitada à área de três cartões. Em janelas menores a área se ajusta ao espaço disponível. O cabeçalho e o botão de caça continuam visíveis, sem aumentar a altura do painel.
+
+Cada aba mantém sua própria coleção durante a sessão do navegador; fechar o painel não apaga as prévias. Uma URL pode expirar com o tempo.
+
+A busca pode levar até oito segundos. A miniatura de 48px só é reduzida visualmente com CSS; o download recebe o arquivo encontrado sem transformação. Se o servidor bloquear a prévia, o painel informa isso e permite confirmar a URL mesmo assim. O nome e o formato final continuam seguindo o MIME informado pelo Chrome.
 
 Permissões: `activeTab` e `scripting` para selecionar após sua ação; `downloads` para baixar após confirmação; `sidePanel` para a interface lateral; `storage` para guardar seleção e estado de download em `chrome.storage.session`. Não é usado armazenamento persistente nem acesso permanente a todos os sites.
 
@@ -89,7 +95,7 @@ Para testar manualmente, execute `python3 -m http.server 8000 --bind 127.0.0.1` 
 
 ## Melhorias planejadas
 
-Suporte cuidadoso a frames autorizados, lista com múltiplas imagens por aba, integração com atributos de outras galerias e seleção explícita entre candidatos de resolução.
+Suporte cuidadoso a frames autorizados, download em lote, integração com atributos de outras galerias e seleção explícita entre candidatos de resolução.
 
 Após atualizar, recarregue a extensão em `chrome://extensions` e recarregue as abas dos sites para substituir os scripts já injetados.
 
@@ -103,4 +109,4 @@ O nome final usa o MIME da resposta informado pelo Chrome em `onDeterminingFilen
 
 ### Validação do painel
 
-Os testes automatizados verificam que seleção só gera prévia, mensagens da página não autorizam downloads, apenas a confirmação do painel inicia um arquivo e cliques repetidos são rejeitados. O teste visual verifica miniatura de 58px, estados de download, remoção, troca de aba, falha da prévia e layout estreito. O carregamento real como extensão e a API nativa de painel lateral ainda exigem validação no Chrome local: o Chromium deste ambiente não permite carregar extensões pelo mecanismo de automação disponível.
+Os testes automatizados verificam que seleção só gera prévia, mensagens da página não autorizam downloads, apenas a confirmação do painel inicia um arquivo e cliques repetidos são rejeitados. O teste visual verifica miniaturas de 48px, edição do nome antes do download, lista com várias imagens, rolagem a partir da quarta, altura fixa, preservação de rascunhos, remoção individual, troca de aba, falha da prévia e layout estreito. O carregamento real como extensão e a API nativa de painel lateral ainda exigem validação no Chrome local: o Chromium deste ambiente não permite carregar extensões pelo mecanismo de automação disponível.

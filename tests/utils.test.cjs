@@ -28,50 +28,54 @@ test('single CSS background URL and safe filename preserve query in download URL
   assert.equal(u.filename('https://example.org/CON.png'), 'imagem');
   assert.equal(u.filename('https://example.org/a%2Fb.png'), 'a_b.png');
 });
-test('selection only creates a preview; downloads require a trusted panel confirmation', async () => {
-  let action, listener, changed, downloads = [], accepted = true, generation = 0;
-  const values = {};
-  const noop = {addListener:()=>{}};
-  const chrome = {
-    storage:{session:{get:async key=>({[key]:values[key]}),set:async obj=>Object.assign(values,obj),remove:async key=>delete values[key]}},
-    sidePanel:{open:async()=>{}},
+test('toolbar only opens panel; hunting accumulates images and titles reach confirmed downloads', async () => {
+  let action, listener, changed, determine, opened=0, executions=0, generation=0;
+  const downloads=[],values={};
+  const noop={addListener:()=>{}};
+  const chrome={
+    storage:{session:{get:async key=>structuredClone(key===null?values:{[key]:values[key]}),set:async obj=>Object.assign(values,structuredClone(obj)),remove:async key=>delete values[key]}},
+    sidePanel:{open:async()=>{opened++}},
     runtime:{id:'extension',getURL:file=>'chrome-extension://extension/'+file,onMessage:{addListener:cb=>listener=cb}},
     action:{onClicked:{addListener:cb=>action=cb},setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{},setTitle:async()=>{}},
-    scripting:{executeScript:async()=>{}},tabs:{sendMessage:async()=>({accepted}),onRemoved:noop},
-    downloads:{search:async()=>[{id:1,state:'in_progress'}],download:async options=>{downloads.push(options);return 1},onChanged:{addListener:cb=>changed=cb},onDeterminingFilename:noop}
+    scripting:{executeScript:async()=>{executions++}},tabs:{sendMessage:async()=>({accepted:true}),onRemoved:noop},
+    downloads:{search:async()=>[{id:1,state:'in_progress'}],download:async options=>{downloads.push(options);return 1},onChanged:{addListener:cb=>changed=cb},onDeterminingFilename:{addListener:cb=>determine=cb}}
   };
-  vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'), {chrome,importScripts:()=>{},ClickImageUtils:u,crypto:{randomUUID:()=> generation++ === 0 ? 'token' : 'item-'+generation}});
-  const send=(message,sender)=>new Promise(resolve=>{const async=listener(message,sender,resolve);if(async!==true)resolve(undefined)});
-  action({id:1}); await new Promise(resolve=>setImmediate(resolve));
-  accepted=false;action({id:1});await new Promise(resolve=>setImmediate(resolve));
+  const load=()=>vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'),{chrome,importScripts:()=>{},ClickImageUtils:u,crypto:{randomUUID:()=> 'id-'+(++generation)}});
+  load();
+  const send=(message,sender)=>new Promise(resolve=>{if(listener(message,sender,resolve)!==true)resolve(undefined)});
   const content={id:'extension',tab:{id:1},frameId:0};
   const panel={id:'extension',url:'chrome-extension://extension/panel.html'};
-  const selection={type:'CLICKIMAGE_PREVIEW',token:'token',url:'https://example.org/a.png',label:'Example'};
-  assert.equal(await send({...selection,token:'forged'},content),undefined);
-  assert.equal((await send({...selection,url:'data:image/png,abc'},content)).ok,false);
-  // Invalid selection consumes the token; start a fresh authorized selection.
-  accepted=true;action({id:1});await new Promise(resolve=>setImmediate(resolve));
-  selection.token='item-3';
-  assert.equal((await send(selection,content)).ok,true);
-  assert.equal(downloads.length,0);
-  const item=values['clickimage:1'].item;
-  assert.equal(values['clickimage:1'].status,'ready');
-  vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'), {chrome,importScripts:()=>{},ClickImageUtils:u,crypto:{randomUUID:()=> 'restored'}});
-  assert.equal((await send({type:'CLICKIMAGE_STATE',tabId:1},panel)).state.item.id,item.id);
-  const confirm={type:'CLICKIMAGE_CONFIRM',tabId:1,itemId:item.id};
+  action({id:1});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(opened,1);assert.equal(executions,0);
+  async function select(url){
+    if(values['clickimage:1']?.status!=='selecting')assert.equal((await send({type:'CLICKIMAGE_SELECT',tabId:1},panel)).ok,true);
+    const token=values['clickimage:1'].selectionToken;
+    return send({type:'CLICKIMAGE_PREVIEW',token,url},content);
+  }
+  await select('https://example.org/a.jpg');
+  await select('https://example.org/b.png');
+  assert.equal(values['clickimage:1'].items.length,2);assert.equal(downloads.length,0);
+  const first=values['clickimage:1'].items[0];
+  await send({type:'CLICKIMAGE_RENAME',tabId:1,itemId:first.id,title:'Foto bonita.jpg'},panel);
+  assert.equal(values['clickimage:1'].items[0].title,'Foto bonita');
+  // Starting and cancelling a new hunt preserves every collected image.
+  const token=values['clickimage:1'].selectionToken;
+  await send({type:'CLICKIMAGE_CANCELLED',token},content);
+  assert.equal(values['clickimage:1'].items.length,2);
+  load(); // Queue and title survive worker suspension.
+  const confirm={type:'CLICKIMAGE_CONFIRM',tabId:1,itemId:first.id};
   assert.equal(await send(confirm,content),undefined);
-  assert.equal(await send(confirm,{id:'foreign',url:panel.url}),undefined);
   const results=await Promise.all([send(confirm,panel),send(confirm,panel)]);
-  assert.equal(results.filter(r=>r.ok).length,1);
-  assert.equal(downloads.length,1);
-  assert.equal(downloads[0].conflictAction,'uniquify');
-  assert.equal((await send(confirm,panel)).ok,false);
-  assert.equal(values['clickimage:1'].status,'downloading');
-  vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'), {chrome,importScripts:()=>{},ClickImageUtils:u,crypto:{randomUUID:()=> 'restored'}});
-  changed({id:1,state:{current:'complete'}});
-  await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(values['clickimage:1'].status,'downloaded');
-  assert.equal((await send(confirm,panel)).ok,false);
+  assert.equal(results.filter(r=>r.ok).length,1);assert.equal(downloads.length,1);
+  assert.equal(downloads[0].filename,'Foto bonita.jpg');assert.equal(downloads[0].conflictAction,'uniquify');
+  const suggestion=await new Promise(resolve=>determine({byExtensionId:'extension',id:1,url:first.url,mime:'image/jpeg'},resolve));
+  assert.equal(suggestion.filename,'Foto bonita.jpg');
+  assert.equal(values['clickimage:1'].items[1].status,'ready');
+  changed({id:1,state:{current:'complete'}});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(values['clickimage:1'].items[0].status,'downloaded');
+  await send({type:'CLICKIMAGE_REMOVE',tabId:1,itemId:first.id},panel);
+  assert.equal(values['clickimage:1'].items.length,1);
+  await select('https://example.org/b.png');assert.equal(values['clickimage:1'].items.length,1);
 });
 
 function image(attributes = {}, extra = {}) {
@@ -182,16 +186,21 @@ test('response MIME adds the right extension for extensionless CDN image URLs',(
  assert.equal(u.filename('https://example.org/download','application/octet-stream'),'download');
  assert.equal(u.imageExtension('text/html'),null);
 });
-test('filename hook only renames this extension downloads using Chrome response MIME',()=>{
+test('filename hook only renames this extension downloads using Chrome response MIME',async()=>{
  let determine;
- const noEvent={addListener:()=>{}};
- const chrome={runtime:{id:'clickimage',onMessage:noEvent},action:{onClicked:noEvent},tabs:{onRemoved:noEvent},downloads:{onChanged:noEvent,onDeterminingFilename:{addListener:cb=>determine=cb}}};
+ const noop={addListener:()=>{}};
+ const chrome={storage:{session:{get:async()=>({})}},runtime:{id:'clickimage',onMessage:noop},action:{onClicked:noop},tabs:{onRemoved:noop},downloads:{onChanged:noop,onDeterminingFilename:{addListener:cb=>determine=cb}}};
  vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'),{chrome,importScripts:()=>{},ClickImageUtils:u});
- const suggestions=[];
- determine({byExtensionId:'clickimage',url:'https://example.org/112290980',mime:'image/jpeg'},s=>suggestions.push(s));
- assert.equal(suggestions[0].filename,'112290980.jpg');
- assert.equal(suggestions[0].conflictAction,'uniquify');
- determine({byExtensionId:'another-extension',url:'https://example.org/112290980',mime:'image/jpeg'},s=>suggestions.push(s));
- assert.equal(suggestions[1],undefined);
- assert.equal(suggestions.length,2);
+ const result=await new Promise(resolve=>determine({byExtensionId:'clickimage',url:'https://example.org/112290980',mime:'image/jpeg'},resolve));
+ assert.equal(result.filename,'112290980.jpg');assert.equal(result.conflictAction,'uniquify');
+ let foreign='pending';determine({byExtensionId:'other'},value=>foreign=value);assert.equal(foreign,undefined);
+});
+
+test('custom titles are safe, preserve accents, and follow actual image format',()=>{
+ assert.equal(u.downloadFilename('https://example.org/a.png','Minha foto.jpg','image/webp'),'Minha foto.webp');
+ assert.equal(u.safeTitle('  São Paulo / Centro  '),'São Paulo _ Centro');
+ assert.equal(u.safeTitle('CON'), '_CON');
+ assert.equal(u.safeTitle('..'), '');
+ assert.ok(Array.from(u.safeTitle('😀'.repeat(100))).length<=60);
+ assert.equal(u.downloadFilename('https://example.org/a.jpg',''),'a.jpg');
 });
