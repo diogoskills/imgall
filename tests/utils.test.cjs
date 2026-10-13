@@ -103,3 +103,54 @@ test('bounds candidate count while retaining the displayed fallback', () => {
   assert.ok(candidates.some(c=>c.url===el.currentSrc));
   assert.ok(candidates.some(c=>c.url.endsWith('/img49.png')));
 });
+test('reads the selected image wrapper without crossing into a multi-image gallery', () => {
+  const el=image();
+  const gallery={tagName:'DIV',getAttribute:n=>n==='data-original'?'/wrong.png':null,querySelectorAll:()=>[el,image()]};
+  const wrapper={tagName:'FIGURE',parentElement:gallery,getAttribute:n=>n==='data-image'?JSON.stringify({original:'/exact.png',images:['/other.png']}):null,querySelectorAll:selector=>selector==='img'?[el]:[]};
+  el.parentElement=wrapper;
+  const urls=u.imageCandidates(el,'https://example.org/',el.currentSrc).map(c=>c.url);
+  assert.ok(urls.includes('https://example.org/exact.png'));
+  assert.ok(!urls.includes('https://example.org/wrong.png'));
+  assert.ok(!urls.includes('https://example.org/other.png'));
+});
+test('does not use a shared link original or unrelated page metadata', () => {
+  const el=image();
+  const link={getAttribute:n=>n==='href'?'/wrong.png':null,querySelectorAll:()=>[el,image()]};
+  el.closest=()=>link;
+  el.parentElement={tagName:'BODY',getAttribute:()=>'/global.png',querySelectorAll:()=>[el]};
+  assert.deepEqual(u.imageCandidates(el,'https://example.org/',el.currentSrc).map(c=>c.url),[el.currentSrc]);
+});
+test('invalid structured metadata is ignored and scoped contentUrl is supported', () => {
+  const el=image({'data-image':'{broken','data-zoom':'[{"url":"/unrelated.png"}]'});
+  el.parentElement={tagName:'FIGURE',getAttribute:()=>null,querySelectorAll:selector=>selector==='img'?[el]:selector.startsWith('meta')?[{getAttribute:()=>'/exact.png'}]:[]};
+  const urls=u.imageCandidates(el,'https://example.org/',el.currentSrc).map(c=>c.url);
+  assert.deepEqual(urls,['https://example.org/exact.png',el.currentSrc]);
+});
+const videoId='abcdefghijk';
+const playerHtml=(id=videoId)=>`<script>var ytInitialPlayerResponse = ${JSON.stringify({videoDetails:{videoId:id,title:'Escaped " } brace',thumbnail:{thumbnails:[{url:`https://i.ytimg.com/vi/${id}/small.jpg`,width:120,height:90},{url:`https://i.ytimg.com/vi/${id}/full.jpg`,width:1280,height:720},{url:'https://i.ytimg.com/vi/otherabcdef/wrong.jpg',width:4000,height:3000}]}}})};</script>`;
+test('YouTube matches the clicked thumbnail to its exact linked video',()=>{
+ const el=image({}, {currentSrc:`https://i.ytimg.com/vi/${videoId}/small.jpg`,closest:()=>({getAttribute:()=>`/watch?v=${videoId}`})});
+ const context=u.youtubeContext(el,'https://www.youtube.com/',el.currentSrc);
+ assert.equal(context.id,videoId);
+ assert.equal(u.youtubeContext(el,'https://www.instagram.com/',el.currentSrc),null);
+ el.closest=()=>({getAttribute:()=>'/watch?v=otherabcdef'});
+ assert.equal(u.youtubeContext(el,'https://www.youtube.com/',el.currentSrc),null);
+});
+test('player JSON only yields declared images of that exact video and never executes code',()=>{
+ const urls=u.youtubeImageUrls(playerHtml(),videoId,'https://www.youtube.com/');
+ assert.deepEqual(urls,[`https://i.ytimg.com/vi/${videoId}/full.jpg`,`https://i.ytimg.com/vi/${videoId}/small.jpg`]);
+ assert.deepEqual(u.youtubeImageUrls(playerHtml('otherabcdef'),videoId,'https://www.youtube.com/'),[]);
+ assert.deepEqual(u.youtubeImageUrls('ytInitialPlayerResponse = { bad }; alert(1)',videoId,'https://www.youtube.com/'),[]);
+});
+test('YouTube uses linked HTML metadata; access failure retains the current image',async()=>{
+ let fetched=[];
+ const sandbox={module:{exports:{}},URL,AbortController,setTimeout,clearTimeout,fetch:async(url,options)=>{fetched.push(url);assert.equal(options.credentials,'same-origin');return {ok:true,url,headers:{get:n=>n==='content-type'?'text/html':null},text:async()=>playerHtml()}}};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../image-utils.js'),'utf8'),sandbox);
+ const api=sandbox.module.exports;
+ const el=image({}, {src:`https://i.ytimg.com/vi/${videoId}/small.jpg`,currentSrc:`https://i.ytimg.com/vi/${videoId}/small.jpg`,closest:()=>({getAttribute:()=>`/watch?v=${videoId}`})});
+ const probe=async url=>new URL(url).hostname==='i.ytimg.com'?{width:url.endsWith('full.jpg')?1280:120,height:720}:null;
+ assert.equal(await api.resolveImage(el,'https://www.youtube.com/',el.currentSrc,probe),`https://i.ytimg.com/vi/${videoId}/full.jpg`);
+ assert.deepEqual(fetched,[`https://www.youtube.com/watch?v=${videoId}`]);
+ sandbox.fetch=async()=>{throw new Error('403')};
+ assert.equal(await api.resolveImage(el,'https://www.youtube.com/',el.currentSrc,probe),el.currentSrc);
+});

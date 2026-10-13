@@ -71,6 +71,8 @@ const assert = require('node:assert/strict');
       assert.notEqual(await cursor(),'crosshair');
       assert.equal(await page.evaluate(()=>ciTracked.size),0);
     }
+    await selectOriginal('HTML do container', /128.png\?wrapper=exact$/);
+    await selectOriginal('Galeria imagem um', /48.png$/);
     await selectOriginal('Original no link', /128.png\?original=link$/);
     await selectOriginal('Original no atributo', /128.png\?original=data$/);
     await selectOriginal('Original indisponível', /128.png\?fallback=1$/);

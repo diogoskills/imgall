@@ -60,7 +60,18 @@
       if (url && (!candidates.has(url) || candidates.get(url).priority < priority)) candidates.set(url, { url, priority });
     }
     function attributes(el) {
-      for (const name of ['data-original', 'data-original-src', 'data-orig-file', 'data-full', 'data-full-src', 'data-full-url', 'data-large', 'data-large-src', 'data-large-file', 'data-zoom-image', 'data-hires', 'data-high-res']) add(el.getAttribute?.(name), 3);
+      for (const name of ['data-original', 'data-original-src', 'data-orig-file', 'data-full', 'data-full-src', 'data-full-url', 'data-large', 'data-large-src', 'data-large-file', 'data-zoom-image', 'data-hires', 'data-high-res', 'data-image-url', 'data-lightbox-src']) add(el.getAttribute?.(name), 3);
+      // Read only known image fields, never arbitrary gallery arrays or scripts.
+      for (const name of ['data-image', 'data-zoom']) {
+        const raw = el.getAttribute?.(name);
+        if (!raw) continue;
+        if (raw.trim().startsWith('{')) {
+          try {
+            const metadata = JSON.parse(raw);
+            for (const key of ['original', 'full', 'large', 'src', 'url']) add(metadata[key], 3);
+          } catch { /* Malformed site metadata is not executable code. */ }
+        } else if (!raw.trim().startsWith('[')) add(raw, 3);
+      }
       for (const name of ['data-src', 'data-lazy-src']) add(el.getAttribute?.(name), 1);
       for (const raw of [el.srcset, el.getAttribute?.('data-srcset'), el.getAttribute?.('data-lazy-srcset')]) {
         // Descriptors order candidates within a set, never compare w with x.
@@ -71,8 +82,24 @@
     if (element.parentElement?.tagName === 'PICTURE') {
       for (const source of element.parentElement.querySelectorAll('source')) attributes(source);
     }
+    function exclusivelySelected(el) {
+      if (!el.querySelectorAll) return true;
+      const images = el.querySelectorAll('img');
+      return element.tagName === 'IMG' ? images.length === 1 && images[0] === element : images.length === 0;
+    }
+    // Inspect the live HTML around this exact image. Stop before a shared
+    // gallery, rather than borrowing the original of another thumbnail.
+    if (element.tagName === 'IMG') {
+      let parent = element.parentElement;
+      for (let depth = 0; parent && depth < 4; depth++, parent = parent.parentElement) {
+        if (['BODY', 'HTML'].includes(parent.tagName) || !exclusivelySelected(parent)) break;
+        attributes(parent);
+        for (const metadata of parent.querySelectorAll?.('meta[itemprop="contentUrl"]') || []) add(metadata.getAttribute('content'), 3);
+        for (const download of parent.querySelectorAll?.('a[download], a[itemprop="contentUrl"]') || []) add(download.getAttribute('href'), 3);
+      }
+    }
     const link = element.closest?.('a[href]');
-    if (link) {
+    if (link && exclusivelySelected(link)) {
       attributes(link);
       const href = validateUrl(link.getAttribute('href'), base);
       // Image decoding filters out HTML navigation targets, including endpoints
@@ -105,9 +132,89 @@
       image.src = url;
     });
   }
+  function youtubeContext(element, base, fallback) {
+    const page = new URL(base);
+    if (!['youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(page.hostname)) return null;
+    const image = validateUrl(fallback, base);
+    if (!image || !['i.ytimg.com', 'img.youtube.com'].includes(new URL(image).hostname)) return null;
+    const id = /^\/(?:vi|vi_webp)\/([\w-]{11})\//.exec(new URL(image).pathname)?.[1];
+    if (!id) return null;
+    const link = element.closest?.('a[href]');
+    if (link?.querySelectorAll) {
+      const images = link.querySelectorAll('img');
+      if (images.length !== 1 || images[0] !== element) return null;
+    }
+    const href = validateUrl(link?.getAttribute('href') || page.href, base);
+    if (!href) return null;
+    const video = new URL(href);
+    const linkedId = video.pathname === '/watch' ? video.searchParams.get('v') : /^\/shorts\/([\w-]{11})\/?$/.exec(video.pathname)?.[1];
+    return video.origin === page.origin && linkedId === id ? { id, url: video.href } : null;
+  }
+  function youtubeImageUrls(html, id, base) {
+    // Parse the page's declared player JSON as data; never execute site code.
+    if (typeof html !== 'string' || html.length > 4 * 1024 * 1024) return [];
+    const marker = /(?:var\s+)?ytInitialPlayerResponse\s*=\s*\{/g;
+    let match;
+    while ((match = marker.exec(html))) {
+      const start = marker.lastIndex - 1;
+      let depth = 0, quoted = false, escaped = false;
+      for (let i = start; i < html.length; i++) {
+        const char = html[i];
+        if (quoted) {
+          if (escaped) escaped = false;
+          else if (char === '\\') escaped = true;
+          else if (char === '"') quoted = false;
+          continue;
+        }
+        if (char === '"') quoted = true;
+        else if (char === '{') depth++;
+        else if (char === '}' && --depth === 0) {
+          try {
+            const details = JSON.parse(html.slice(start, i + 1)).videoDetails;
+            if (details?.videoId !== id || !Array.isArray(details.thumbnail?.thumbnails)) break;
+            return details.thumbnail.thumbnails.slice().sort((a, b) => (Number(b.width) * Number(b.height) || 0) - (Number(a.width) * Number(a.height) || 0)).map(t => validateUrl(t.url, base)).filter(url => {
+              if (!url) return false;
+              const image = new URL(url);
+              return ['i.ytimg.com', 'img.youtube.com'].includes(image.hostname) && new RegExp(`^/(?:vi|vi_webp)/${id}/`).test(image.pathname);
+            });
+          } catch { /* Continue only with another valid declaration. */ }
+          break;
+        }
+      }
+    }
+    return [];
+  }
+  async function linkedYoutubeImages(element, base, fallback, remaining) {
+    const context = youtubeContext(element, base, fallback);
+    if (!context) return [];
+    const live = element.ownerDocument?.querySelectorAll('script') || [];
+    for (const script of live) {
+      const urls = youtubeImageUrls(script.textContent, context.id, base);
+      if (urls.length) return urls;
+    }
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), Math.min(3000, remaining));
+    try {
+      const response = await fetch(context.url, { signal: abort.signal, credentials: 'same-origin' });
+      if (!response.ok || new URL(response.url).origin !== new URL(base).origin || !response.headers.get('content-type')?.includes('text/html')) return [];
+      if (Number(response.headers.get('content-length')) > 4 * 1024 * 1024) return [];
+      return youtubeImageUrls(await response.text(), context.id, response.url);
+    } catch { return []; }
+    finally { clearTimeout(timer); }
+  }
   async function resolveImage(element, base, fallback, probe = probeImage) {
-    const candidates = imageCandidates(element, base, fallback);
     const deadline = Date.now() + 8000;
+    const candidates = imageCandidates(element, base, fallback);
+    const linked = await linkedYoutubeImages(element, base, fallback, deadline - Date.now());
+    for (const url of linked.reverse()) {
+      if (!candidates.some(c => c.url === url)) candidates.unshift({ url, priority: 3 });
+    }
+    // Retain the original fallback when linked metadata fills the budget.
+    if (candidates.length > 24) {
+      candidates.length = 24;
+      const current = validateUrl(fallback, base);
+      if (current && !candidates.some(c => c.url === current)) candidates[23] = { url: current, priority: 0 };
+    }
     const available = [];
     let index = 0;
     async function inspect() {
@@ -131,7 +238,7 @@
     if (!name || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(name)) name = 'imagem';
     return name;
   }
-  const api = { validateUrl, parseSrcset, imageUrl, imageCandidates, resolveImage, backgroundUrl, filename };
+  const api = { validateUrl, parseSrcset, imageUrl, imageCandidates, resolveImage, youtubeContext, youtubeImageUrls, backgroundUrl, filename };
   root.ClickImageUtils = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);
