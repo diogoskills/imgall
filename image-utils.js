@@ -230,15 +230,24 @@
     available.sort((a, b) => b.area - a.area || b.priority - a.priority);
     return available[0]?.url || validateUrl(fallback, base);
   }
-  function filename(raw) {
+  function imageExtension(mime) {
+    return ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg', 'image/bmp': 'bmp', 'image/x-ms-bmp': 'bmp', 'image/tiff': 'tif', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico' })[String(mime || '').split(';')[0].trim().toLowerCase()] || null;
+  }
+  function filename(raw, mime) {
     const url = new URL(raw);
     let name;
     try { name = decodeURIComponent(url.pathname.split('/').pop()); } catch { name = ''; }
     name = (name || 'imagem').normalize('NFC').replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, '_').replace(/[. ]+$/g, '').slice(0, 160);
     if (!name || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(name)) name = 'imagem';
+    const extension = imageExtension(mime);
+    if (extension) {
+      const existing = /\.([a-z0-9]+)$/i.exec(name)?.[1].toLowerCase();
+      const aliases = { jpg: ['jpg', 'jpeg', 'jpe'], tif: ['tif', 'tiff'] };
+      if (!(aliases[extension] || [extension]).includes(existing)) name = name.replace(/\.[a-z0-9]{1,10}$/i, '') + '.' + extension;
+    }
     return name;
   }
-  const api = { validateUrl, parseSrcset, imageUrl, imageCandidates, resolveImage, youtubeContext, youtubeImageUrls, backgroundUrl, filename };
+  const api = { validateUrl, parseSrcset, imageUrl, imageCandidates, resolveImage, youtubeContext, youtubeImageUrls, backgroundUrl, imageExtension, filename };
   root.ClickImageUtils = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

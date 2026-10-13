@@ -36,7 +36,7 @@ test('worker consumes activation once and rejects forged or unsupported requests
     runtime:{id:'extension',onMessage:{addListener:event}},
     action:{onClicked:{addListener:cb=>action=cb},setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{},setTitle:async()=>{}},
     scripting:{executeScript:async()=>{}},tabs:{sendMessage:async()=>({accepted}),onRemoved:{addListener:()=>{}}},
-    downloads:{download:async options=>{downloads.push(options);return 1},onChanged:{addListener:()=>{}}}
+    downloads:{download:async options=>{downloads.push(options);return 1},onChanged:{addListener:()=>{}},onDeterminingFilename:{addListener:()=>{}}}
   };
   vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'), {chrome,importScripts:()=>{},ClickImageUtils:u,crypto:{randomUUID:()=> generation++ === 0 ? 'token' : 'replacement'}});
   await action({id:1});
@@ -153,4 +153,27 @@ test('YouTube uses linked HTML metadata; access failure retains the current imag
  assert.deepEqual(fetched,[`https://www.youtube.com/watch?v=${videoId}`]);
  sandbox.fetch=async()=>{throw new Error('403')};
  assert.equal(await api.resolveImage(el,'https://www.youtube.com/',el.currentSrc,probe),el.currentSrc);
+});
+test('response MIME adds the right extension for extensionless CDN image URLs',()=>{
+ const raw='https://yt3.example.org/9t6uZTdW=s176-c-k-c0x00ffffff-no-rj-mo';
+ assert.equal(u.filename(raw,'image/jpeg'),'9t6uZTdW=s176-c-k-c0x00ffffff-no-rj-mo.jpg');
+ assert.equal(u.filename('https://example.org/112290980','image/png'),'112290980.png');
+ assert.equal(u.filename('https://example.org/a.png','image/jpeg'),'a.jpg');
+ assert.equal(u.filename('https://example.org/a.jpeg','IMAGE/JPEG; charset=binary'),'a.jpeg');
+ assert.equal(u.filename('https://example.org/download?oh=signed','image/webp'),'download.webp');
+ assert.equal(u.filename('https://example.org/download','application/octet-stream'),'download');
+ assert.equal(u.imageExtension('text/html'),null);
+});
+test('filename hook only renames this extension downloads using Chrome response MIME',()=>{
+ let determine;
+ const noEvent={addListener:()=>{}};
+ const chrome={runtime:{id:'clickimage',onMessage:noEvent},action:{onClicked:noEvent},tabs:{onRemoved:noEvent},downloads:{onChanged:noEvent,onDeterminingFilename:{addListener:cb=>determine=cb}}};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'),{chrome,importScripts:()=>{},ClickImageUtils:u});
+ const suggestions=[];
+ determine({byExtensionId:'clickimage',url:'https://example.org/112290980',mime:'image/jpeg'},s=>suggestions.push(s));
+ assert.equal(suggestions[0].filename,'112290980.jpg');
+ assert.equal(suggestions[0].conflictAction,'uniquify');
+ determine({byExtensionId:'another-extension',url:'https://example.org/112290980',mime:'image/jpeg'},s=>suggestions.push(s));
+ assert.equal(suggestions[1],undefined);
+ assert.equal(suggestions.length,2);
 });

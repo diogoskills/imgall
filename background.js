@@ -9,6 +9,14 @@ function badge(tabId, text, title) {
   chrome.action.setBadgeText({ tabId, text }).catch(() => {});
   chrome.action.setTitle({ tabId, title }).catch(() => {});
 }
+// Chrome supplies the response MIME here, before the final filename is chosen.
+// Restrict suggestions to downloads initiated by this extension.
+chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  if (item.byExtensionId !== chrome.runtime.id) { suggest(); return; }
+  const url = ClickImageUtils.validateUrl(item.url);
+  if (!url) { suggest(); return; }
+  suggest({ filename: ClickImageUtils.filename(url, item.mime), conflictAction: 'uniquify' });
+});
 chrome.action.onClicked.addListener(async tab => {
   if (!tab.id || activating.has(tab.id) || busy.has(tab.id)) return;
   activating.add(tab.id);

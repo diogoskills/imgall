@@ -1,1 +1,1 @@
-{"name":"clickimage","version":"1.2.1","private":true,"scripts":{"test":"node --test tests/*.test.cjs","check":"node --check background.js && node --check content.js && node --check image-utils.js"},"engines":{"node":">=20"}}
+{"name":"clickimage","version":"1.2.2","private":true,"scripts":{"test":"node --test tests/*.test.cjs","check":"node --check background.js && node --check content.js && node --check image-utils.js"},"engines":{"node":">=20"}}
