@@ -16,7 +16,7 @@ test('URLs reject unsupported protocols and embedded credentials', () => {
 test('srcset upgrades only a matching homogeneous candidate set', () => {
   const base = 'https://example.org/';
   assert.equal(u.imageUrl({ currentSrc: base+'a.png', srcset: 'a.png 1x, b.png 2x' }, base), base+'b.png');
-  for (const set of ['a.png 1x, b.png 200w','a.png 1x, b.png 1x','a.png, b.png 2x','a.png 1w, b.png 1.5w']) assert.deepEqual(u.parseSrcset(set, base), []);
+  for (const set of ['a.png 1x, b.png 200w','a.png 1x, b.png 1x','a.png 1w, b.png 1.5w']) assert.deepEqual(u.parseSrcset(set, base), []);
   assert.equal(u.imageUrl({ currentSrc: base+'c.png', srcset: 'a.png 1x, b.png 2x' }, base), base+'c.png');
   const source = {srcset:'a.webp 400w, b.webp 1200w'};
   assert.equal(u.imageUrl({currentSrc:base+'a.webp',parentElement:{tagName:'PICTURE',querySelectorAll:()=>[source]}},base),base+'b.webp');
@@ -30,14 +30,18 @@ test('single CSS background URL and safe filename preserve query in download URL
 });
 test('worker consumes activation once and rejects forged or unsupported requests', async () => {
   let action, listener, downloads = [];
+  let accepted = true, generation = 0;
   const event = cb => {listener = cb};
   const chrome = {
     runtime:{id:'extension',onMessage:{addListener:event}},
     action:{onClicked:{addListener:cb=>action=cb},setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{},setTitle:async()=>{}},
-    scripting:{executeScript:async()=>{}},tabs:{sendMessage:async()=>{},onRemoved:{addListener:()=>{}}},
+    scripting:{executeScript:async()=>{}},tabs:{sendMessage:async()=>({accepted}),onRemoved:{addListener:()=>{}}},
     downloads:{download:async options=>{downloads.push(options);return 1},onChanged:{addListener:()=>{}}}
   };
-  vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'), {chrome,importScripts:()=>{},ClickImageUtils:u,crypto:{randomUUID:()=> 'token'}});
+  vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'), {chrome,importScripts:()=>{},ClickImageUtils:u,crypto:{randomUUID:()=> generation++ === 0 ? 'token' : 'replacement'}});
+  await action({id:1});
+  // A toolbar click while content resolves an original must keep its token.
+  accepted = false;
   await action({id:1});
   const sender={id:'extension',tab:{id:1},frameId:0};
   let results=[];
@@ -50,4 +54,52 @@ test('worker consumes activation once and rejects forged or unsupported requests
   assert.equal(downloads.length,1);
   assert.equal(downloads[0].conflictAction,'uniquify');
   assert.equal(results.filter(r=>r.ok).length,1);
+});
+
+function image(attributes = {}, extra = {}) {
+  return { tagName: 'IMG', currentSrc: 'https://example.org/thumb.png', src: 'https://example.org/thumb.png', getAttribute: name => attributes[name] ?? null, ...extra };
+}
+test('srcset supports implicit 1x and comma-bearing URLs without stripping query', () => {
+  assert.deepEqual(u.parseSrcset('thumb.png, full.png 2x', 'https://example.org/').map(c=>c.size), [1,2]);
+  assert.equal(u.parseSrcset('photo.png?crop=1,2 400w, full.png 1600w','https://example.org/')[0].url, 'https://example.org/photo.png?crop=1,2');
+  assert.deepEqual(u.parseSrcset('a.png 0w, b.png 300w','https://example.org/'), []);
+  assert.equal(u.validateUrl(null, 'https://example.org/'), null);
+  assert.equal(u.validateUrl(' ', 'https://example.org/'), null);
+});
+test('collects originals, lazy sets, all picture sources and extensionless image links', () => {
+  const source = image({'data-srcset':'medium.png 400w, wide.png 2000w'});
+  const link = {getAttribute:name=>name==='href'?'/image?id=original':null};
+  const el = image({'data-original':'/original.png','data-srcset':'thumb.png 100w, high.png 3000w','data-src':'/lazy.png'}, {parentElement:{tagName:'PICTURE',querySelectorAll:()=>[source]},closest:()=>link});
+  const urls = u.imageCandidates(el,'https://example.org/',el.currentSrc).map(c=>c.url);
+  for (const file of ['original.png','image?id=original','lazy.png','high.png','wide.png','thumb.png']) assert.ok(urls.includes('https://example.org/'+file));
+  assert.equal(urls.length,new Set(urls).size);
+});
+test('uses intrinsic pixel area, not CSS size or the largest srcset label', async () => {
+  const el=image({'data-original':'/original.png'}, {srcset:'thumb.png 300w, mislabeled.png 3000w',width:20,height:20});
+  const size={ 'original.png': [2400,1600], 'mislabeled.png':[200,150], 'thumb.png':[300,200] };
+  const url=await u.resolveImage(el,'https://example.org/',el.currentSrc,async url=>{const [width,height]=size[new URL(url).pathname.slice(1)];return {width,height}});
+  assert.equal(url,'https://example.org/original.png');
+});
+test('unavailable original or HTML link falls back to largest successfully decoded candidate', async () => {
+  const el=image({'data-original':'/blocked.png','data-srcset':'thumb.png 300w, available.png 1600w'}, {closest:()=>({getAttribute:name=>name==='href'?'/gallery':null})});
+  const url=await u.resolveImage(el,'https://example.org/',el.currentSrc,async url=>{
+    if(url.endsWith('/blocked.png')) throw new Error('access denied');
+    if(url.endsWith('/gallery')) return null;
+    return {width:url.endsWith('/available.png')?1600:300,height:900};
+  });
+  assert.equal(url,'https://example.org/available.png');
+  assert.equal(await u.resolveImage(el,'https://example.org/',el.currentSrc,async()=>null),el.currentSrc);
+});
+test('original wins equal-resolution tie; invalid sources never get probed', async () => {
+  const el=image({'data-original':'/original.png','data-full':'javascript:alert(1)','data-hires':'https://u:p@example.org/private'});
+  const seen=[];
+  assert.equal(await u.resolveImage(el,'https://example.org/',el.currentSrc,async url=>{seen.push(url);return {width:100,height:100}}),'https://example.org/original.png');
+  assert.equal(seen.length,2);
+});
+test('bounds candidate count while retaining the displayed fallback', () => {
+  const el=image({}, {srcset:Array.from({length:50},(_,i)=>`img${i}.png ${i+1}w`).join(', ')});
+  const candidates=u.imageCandidates(el,'https://example.org/',el.currentSrc);
+  assert.equal(candidates.length,24);
+  assert.ok(candidates.some(c=>c.url===el.currentSrc));
+  assert.ok(candidates.some(c=>c.url.endsWith('/img49.png')));
 });

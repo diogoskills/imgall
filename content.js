@@ -3,7 +3,7 @@
   if (globalThis.__clickImageInstalled) return;
   globalThis.__clickImageInstalled = true;
   const utils = globalThis.ClickImageUtils;
-  let active = false, token = '', host, box, label, selected, timer;
+  let active = false, resolving = false, token = '', host, box, label, selected, timer;
   function ui() {
     if (host?.isConnected) return;
     host = document.createElement('div');
@@ -18,14 +18,14 @@
   }
   function feedback(text) {
     ui(); clearTimeout(timer); label.textContent = text;
-    timer = setTimeout(() => { if (!active) host?.remove(); }, 4500);
+    timer = setTimeout(() => { if (!active && !resolving) host?.remove(); }, 4500);
   }
   function candidate(event) {
     for (const el of event.composedPath()) {
       if (!(el instanceof Element) || el === host) continue;
       const rect = el.getBoundingClientRect();
-      if (rect.width < 32 || rect.height < 32 || el.getAttribute('role') === 'presentation' || el.getAttribute('aria-hidden') === 'true') continue;
-      if (el.tagName === 'IMG') return { el, url: utils.imageUrl(el, document.baseURI), rect };
+      if (rect.width <= 0 || rect.height <= 0 || el.getAttribute('role') === 'presentation' || el.getAttribute('aria-hidden') === 'true') continue;
+      if (el.tagName === 'IMG') return { el, url: utils.validateUrl(el.currentSrc || el.src, document.baseURI), rect };
       const css = getComputedStyle(el).backgroundImage;
       if (css !== 'none' && utils.backgroundUrl(css, document.baseURI)) return { el, url: utils.backgroundUrl(css, document.baseURI), rect };
     }
@@ -58,16 +58,20 @@
     event.preventDefault(); event.stopImmediatePropagation();
     const selectionToken = token;
     deactivate();
-    if (!target.url) { feedback('Esta imagem não possui uma URL HTTP/HTTPS direta.'); return; }
-    feedback('Solicitando download…');
+    resolving = true;
+    feedback('Buscando a maior imagem disponível…');
     try {
-      const result = await chrome.runtime.sendMessage({ type: 'CLICKIMAGE_DOWNLOAD', token: selectionToken, url: target.url });
+      const url = await utils.resolveImage(target.el, document.baseURI, target.url);
+      if (!url) { feedback('Esta imagem não possui uma URL HTTP/HTTPS direta acessível.'); return; }
+      const result = await chrome.runtime.sendMessage({ type: 'CLICKIMAGE_DOWNLOAD', token: selectionToken, url });
       feedback(result?.ok ? 'Download iniciado. Confira os downloads do Chrome.' : result?.error || 'Não foi possível baixar esta imagem.');
     } catch { feedback('A extensão foi desconectada. Recarregue a página e tente novamente.'); }
+    finally { resolving = false; }
   }
-  chrome.runtime.onMessage.addListener(message => {
+  chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (message?.type === 'CLICKIMAGE_ACTIVATE' && typeof message.token === 'string') {
-      if (active) { deactivate(); feedback('Seleção cancelada.'); return; }
+      if (resolving) { reply?.({ accepted: false }); feedback('Aguarde a busca da imagem selecionada.'); return; }
+      if (active) { reply?.({ accepted: false }); deactivate(); feedback('Seleção cancelada.'); return; }
       token = message.token; active = true; ui(); clearTimeout(timer);
       label.textContent = 'ClickImage ativo · clique em uma imagem · ESC cancela';
       cursorStyle = document.createElement('style'); cursorStyle.textContent = '*{cursor:crosshair!important}'; document.documentElement.append(cursorStyle);
@@ -76,6 +80,7 @@
       window.addEventListener('keydown', key, true);
       window.addEventListener('scroll', clearHighlight, true);
       window.addEventListener('resize', clearHighlight, true);
+      reply?.({ accepted: true });
     } else if (message?.type === 'CLICKIMAGE_ERROR') feedback(message.error);
   });
 })();
