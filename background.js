@@ -188,9 +188,17 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   if (sender.id!==chrome.runtime.id || !message || typeof message.type!=='string') return;
   const isPanel=panelSender(sender),tabId=isPanel?message.tabId:sender.tab?.id;
   if (!Number.isInteger(tabId) || tabId<=0 || (!isPanel && sender.frameId!==0)) return;
-  const panelTypes=['CLICKIMAGE_STATE','CLICKIMAGE_SELECT','CLICKIMAGE_STOP','CLICKIMAGE_CONFIRM','CLICKIMAGE_REMOVE','CLICKIMAGE_RENAME','CLICKIMAGE_CLEAR_ALL','CLICKIMAGE_CONFIRM_ALL','CLICKIMAGE_CONFIRM_PNG'];
+  const panelTypes=['CLICKIMAGE_STATE','CLICKIMAGE_SELECT','CLICKIMAGE_STOP','CLICKIMAGE_CONFIRM','CLICKIMAGE_REMOVE','CLICKIMAGE_RENAME','CLICKIMAGE_CLEAR_ALL','CLICKIMAGE_CONFIRM_ALL','CLICKIMAGE_CONFIRM_PNG','CLICKIMAGE_OPEN_IMAGE'];
   const contentTypes=['CLICKIMAGE_PREVIEW','CLICKIMAGE_CANCELLED','CLICKIMAGE_RESOLVING'];
   if (!(isPanel?panelTypes:contentTypes).includes(message.type)) return;
+  // Waiting for a newly opened image must not block collection/download locks.
+  if(isPanel && message.type==='CLICKIMAGE_OPEN_IMAGE'){
+    state(tabId).then(current=>{
+      const image=current.items.find(item=>item.id===message.itemId);
+      return image?ClickImageActions.openImage(image.url):{ok:false,error:'Imagem removida.'};
+    }).then(reply).catch(()=>reply({ok:false,error:'Não foi possível abrir a imagem.'}));
+    return true;
+  }
   locked(tabId,async()=>{
     if (isPanel) {
       if (message.type==='CLICKIMAGE_SELECT') return activate(tabId);

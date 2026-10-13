@@ -19,6 +19,7 @@ const path=require('node:path');const http=require('node:http');const fs=require
    window.panelDisconnected=0;Object.defineProperty(navigator,'clipboard',{value:{writeText:async url=>window.copiedURL=url}});window.mockTab=7;window.mockState={status:'idle',items:[]};window.commands=[];window.handlers=[];
    window.chrome={tabs:{create:async options=>{window.searchURL=options.url;return {id:123}},query:async()=>[{id:mockTab}],onActivated:{addListener:cb=>window.tabHandler=cb},onUpdated:{addListener:()=>{}}},storage:{onChanged:{addListener:cb=>handlers.push(cb)}},runtime:{connect:()=>({onDisconnect:{addListener:()=>{}},postMessage:()=>{},disconnect:()=>{panelDisconnected++;setPanelState({...mockState,status:'idle'})}}),sendMessage:async message=>{
     commands.push(message);
+    if(message.type==='CLICKIMAGE_OPEN_IMAGE'){window.openedImage=message;return {ok:true,zoomSet:true}}
     if(message.type==='CLICKIMAGE_STATE')return {ok:true,state:mockState};
     const item=mockState.items.find(image=>image.id===message.itemId);
     if(message.type==='CLICKIMAGE_SELECT')mockState.status='selecting';
@@ -30,6 +31,8 @@ const path=require('node:path');const http=require('node:http');const fs=require
     if(message.type==='CLICKIMAGE_CONFIRM_ALL'){mockState.batch={running:true,total:mockState.items.length,finished:0,failed:0};mockState.items.forEach(image=>image.status='queued');}
     return {ok:true};
    }}};
+   window.localPreferences={clickimageLayout:'compact'};chrome.storage.local={get:async()=>localPreferences,set:async value=>Object.assign(localPreferences,value)};
+   chrome.downloads={download:async options=>{window.archiveCalls=(window.archiveCalls||0)+1;window.archiveDownload=options;window.archiveBytes=Array.from(new Uint8Array(await (await fetch(options.url)).arrayBuffer()));return 101},search:async()=>[{id:101,state:window.archivePending?'in_progress':'complete'}],onChanged:{addListener:()=>{},removeListener:()=>{}}};
    window.setPanelState=state=>{mockState=state;handlers.forEach(cb=>cb({['clickimage:'+mockTab]:{newValue:state}},'session'))};
   });
   await page.goto(base+'/panel.html');
@@ -59,7 +62,9 @@ const path=require('node:path');const http=require('node:http');const fs=require
   assert.equal(await page.locator('#select').isEnabled(),true);
   await page.locator('.copy-url').click();assert.equal(await page.evaluate(()=>copiedURL),item.url);
   await page.locator('.reverse-search').click();assert.equal(new URL(await page.evaluate(()=>searchURL)).searchParams.get('url'),item.url);
-  await page.locator('#layout').selectOption('compact');assert.equal(await page.locator('#image-list').getAttribute('data-layout'),'compact');
+  assert.deepEqual(await page.locator('#layout option').evaluateAll(options=>options.map(option=>option.value)),['list','grid']);
+  assert.equal(await page.evaluate(()=>localPreferences.clickimageLayout),'list');
+  await page.locator('.open-image').click();assert.equal(await page.evaluate(()=>openedImage.itemId),item.id);
   await page.locator('#layout').selectOption('grid');assert.equal(await page.locator('#image-list').getAttribute('data-layout'),'grid');
   await page.locator('#layout').selectOption('list');
   assert.equal(await page.locator('.source').textContent(),'Imagem encontrada');
@@ -99,6 +104,27 @@ const path=require('node:path');const http=require('node:http');const fs=require
   assert.equal(await page.locator('#gallery').isVisible(),true);
   assert.ok((await page.locator('#gallery').boundingBox()).x<(await page.locator('#image-list').boundingBox()).x);
   assert.ok(await page.locator('#gallery img').first().evaluate(el=>el.getBoundingClientRect().width)>32);
+  await page.locator('#gallery img').first().click({button:'middle'});assert.equal(await page.evaluate(()=>openedImage.itemId),items[0].id);
+  await page.evaluate(()=>window.archivePending=true);
+  await page.locator('#download-all').click();await page.locator('#batch-zip').click();
+  await page.waitForFunction(()=>window.archiveDownload);
+  assert.equal(await page.locator('#download-all').isEnabled(),false);
+  await page.locator('#batch-zip').dispatchEvent('click');assert.equal(await page.evaluate(()=>archiveCalls),1);
+  await page.evaluate(()=>window.archivePending=false);
+  await page.waitForFunction(()=>document.querySelector('#batch-progress').textContent.startsWith('ZIP salvo'));
+  assert.equal(await page.evaluate(()=>archiveDownload.filename),'ClickImage.zip');
+  assert.deepEqual(await page.evaluate(()=>archiveBytes.slice(0,4)),[80,75,3,4]);
+  assert.equal(await page.evaluate(()=>mockState.items.some(item=>item.status==='downloaded')),false);
+  const beforeArchive=await page.evaluate(()=>mockState);
+  await page.evaluate(()=>setPanelState({...mockState,items:mockState.items.map(item=>({...item,status:'downloaded'}))}));
+  await page.locator('#download-all').click();assert.equal(await page.locator('#batch-individual').isEnabled(),false);assert.equal(await page.locator('#batch-zip').isEnabled(),true);
+  await page.evaluate(state=>setPanelState({...state,items:[...state.items,{...state.items[0],id:'zip-failure',title:'Falha de exemplo',url:state.items[0].url.replace('128.png','missing.png')}]}),beforeArchive);
+  if(!(await page.locator('#batch-zip').isVisible()))await page.locator('#download-all').click();
+  await page.locator('#batch-zip').click();
+  await page.waitForFunction(()=>document.querySelector('#batch-progress').textContent.includes('não incluídas: Falha de exemplo'));
+  assert.equal(await page.evaluate(()=>archiveCalls),2);
+  await page.evaluate(state=>setPanelState(state),beforeArchive);
+
   await page.screenshot({path:'/workspace/scratch/clickimage-gallery.png',fullPage:true});
   await page.locator('#gallery-toggle').click();
   // Constrained grid rows must retain each card's intrinsic height, including
@@ -127,7 +153,7 @@ const path=require('node:path');const http=require('node:http');const fs=require
   await page.locator('#layout').selectOption('list');
   await page.locator('.remove').first().click();await page.waitForFunction(()=>document.querySelectorAll('.image-card').length===5);
   assert.equal(await page.locator('#download-all').isVisible(),true);
-  await page.locator('#download-all').click();
+  await page.locator('#download-all').click();await page.locator('#batch-individual').click();
   await page.waitForFunction(()=>mockState.batch?.running===true);
   assert.equal(await page.locator('#download-all').isEnabled(),false);
   assert.equal(await page.evaluate(()=>commands.filter(m=>m.type==='CLICKIMAGE_CONFIRM_ALL').length),1);
@@ -158,6 +184,6 @@ const path=require('node:path');const http=require('node:http');const fs=require
   await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
   assert.equal(await page.locator('#select').getAttribute('aria-pressed'),'false');
   assert.deepEqual(errors,[]);
-  console.log('PASS: manual hunt; multiple previews; editable download titles; no automatic download; continued hunting; vivid active button; trash clears collection; batch button at 4+; hidden CDN domains; 4+ scroll; fixed panel height; draft preservation; per-image removal; preview failure; tab isolation; narrow layout; 16px grid row spacing at 280/360/700px with new images and gallery open. Copy URL, layout choices, reverse search URL and native WebP-to-PNG codec also passed; original remains available. Chrome APIs mocked.');
+  console.log('PASS: manual hunt; multiple previews; editable download titles; no automatic download; continued hunting; vivid active button; trash clears collection; batch button at 4+; hidden CDN domains; 4+ scroll; fixed panel height; draft preservation; per-image removal; preview failure; tab isolation; narrow layout; 16px grid row spacing at 280/360/700px with new images and gallery open. Open original button, middle-click gallery, per-tab zoom request, legacy layout migration, individual/ZIP choice, duplicate ZIP guard and partial failures also passed. Copy URL, layout choices, reverse search URL and native WebP-to-PNG codec also passed; original remains available. Chrome APIs mocked.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(error=>{console.error(error);process.exitCode=1});

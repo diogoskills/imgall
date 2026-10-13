@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let tabId=null,request=0,collection={items:[]},batchRequest=false,lifecyclePort=null,closing=false;
+let tabId=null,request=0,collection={items:[]},batchRequest=false,zipJob=null,zipProgress=null,lifecyclePort=null,closing=false;
 function connectPanel(){
   if(closing)return;
   try{lifecyclePort=chrome.runtime.connect({name:"clickimage-panel"});
@@ -10,7 +10,7 @@ function connectPanel(){
 }
 function bindPanel(){try{if(!lifecyclePort)connectPanel();if(tabId)lifecyclePort?.postMessage({type:"bind",tabId})}catch{lifecyclePort=null;}}
 let heartbeat=setInterval(bindPanel,20000);
-function closePanelConnection(){closing=true;clearInterval(heartbeat);try{lifecyclePort?.disconnect()}catch{}lifecyclePort=null;}
+function closePanelConnection(){zipJob?.abort();closing=true;clearInterval(heartbeat);try{lifecyclePort?.disconnect()}catch{}lifecyclePort=null;}
 window.addEventListener("pagehide",closePanelConnection);
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden)closePanelConnection();
@@ -30,7 +30,9 @@ function renderGallery(items){
  for(const item of items){if(galleryImages.has(item.id))continue;
    const button=document.createElement("button");button.className="gallery-entry";button.setAttribute("aria-label","Ver "+(item.title||item.filename));
    const image=document.createElement("img");image.src=item.url;image.alt=item.label||"Imagem selecionada";image.referrerPolicy="no-referrer";
-   button.append(image);button.addEventListener("click",()=>cards.get(item.id)?.scrollIntoView({block:"nearest"}));$("gallery").append(button);galleryImages.set(item.id,button);
+   button.append(image);button.addEventListener("click",()=>cards.get(item.id)?.scrollIntoView({block:"nearest"}));
+   button.addEventListener("auxclick",event=>{if(event.button===1){event.preventDefault();openImage(item.id)}});
+   button.addEventListener("mousedown",event=>{if(event.button===1)event.preventDefault()});$("gallery").append(button);galleryImages.set(item.id,button);
  }
 }
 function notice(text) { $('feedback').textContent=text||'';$('feedback').hidden=!text; }
@@ -52,10 +54,13 @@ function render(value) {
   $('clear-all').disabled=!items.length;
   $('download-all').hidden=items.length<=3;
   const batchRunning=!!value.batch?.running;
-  $('download-all').disabled=batchRequest || batchRunning || !items.some(item=>['ready','error'].includes(item.status));
+  $('download-all').disabled=batchRequest || batchRunning || !!zipJob;
+  $('batch-individual').disabled=!items.some(item=>['ready','error'].includes(item.status));
+  if(items.length<=3 || $('download-all').disabled){$('batch-options').hidden=true;$('download-all').setAttribute('aria-expanded','false')}
   $('download-all').querySelector('span').textContent=batchRunning?'Baixando em sequência…':'Baixar todas';
   $('batch-progress').hidden=!value.batch;
   $('batch-progress').textContent=value.batch ? (batchRunning?`${value.batch.finished} de ${value.batch.total} concluídas`:`Lote finalizado: ${value.batch.total-value.batch.failed} salvas${value.batch.failed?`, ${value.batch.failed} com erro`:''}`) : '';
+  if(zipProgress){$('batch-progress').hidden=false;$('batch-progress').textContent=zipProgress}
   $('select').querySelector('span').textContent=hunting?'Parar seleção':'Caçar imagem';
   notice(value.error);
   for(const [id,card] of cards) if(!items.some(item=>item.id===id)){card.remove();cards.delete(id)}
@@ -73,6 +78,7 @@ function render(value) {
       card.querySelector('.reverse-search').addEventListener('click',()=>{
         chrome.tabs.create({url:ClickImageActions.reverseSearchURL(card._item.url)}).catch(()=>notice('Não foi possível abrir a pesquisa reversa.'));
       });
+      card.querySelector('.open-image').addEventListener('click',()=>openImage(item.id));
       card.querySelector('.convert-png').addEventListener('click',async()=>{
         const targetTab=tabId;if(converting.has(item.id))return;converting.add(item.id);render(collection);
         let error=null;
@@ -117,7 +123,7 @@ async function refresh(){
   const revision=++request;
   try{
     const [tab]=await chrome.tabs.query({active:true,currentWindow:true});if(revision!==request)return;
-    if(tabId!==tab?.id){for(const card of cards.values())card.remove();cards.clear();for(const image of galleryImages.values())image.remove();galleryImages.clear()}
+    if(tabId!==tab?.id){zipJob?.abort();zipProgress=null;for(const card of cards.values())card.remove();cards.clear();for(const image of galleryImages.values())image.remove();galleryImages.clear()}
     tabId=tab?.id || null;bindPanel();
     if(!tabId){render({status:'idle',items:[]});return}
     const response=await chrome.runtime.sendMessage({type:'CLICKIMAGE_STATE',tabId});if(revision!==request)return;
@@ -133,9 +139,11 @@ async function command(type,extra={}){
   }catch{notice('Feche e abra o painel novamente.');return false}
 }
 $('select').addEventListener('click',()=>{const hunting=$('select').dataset.hunting==='true';$('select').disabled=true;command(hunting?'CLICKIMAGE_STOP':'CLICKIMAGE_SELECT')});
-$('clear-all').addEventListener('click',()=>{ $('clear-all').disabled=true;command('CLICKIMAGE_CLEAR_ALL'); });
-$('download-all').addEventListener('click',async()=>{
-  if(batchRequest || $('download-all').disabled)return;
+$('clear-all').addEventListener('click',()=>{zipJob?.abort();zipProgress=null; $('clear-all').disabled=true;command('CLICKIMAGE_CLEAR_ALL'); });
+$('download-all').addEventListener('click',()=>{if($('download-all').disabled)return;$('batch-options').hidden=!$('batch-options').hidden;$('download-all').setAttribute('aria-expanded',String(!$('batch-options').hidden))});
+$('batch-individual').addEventListener('click',async()=>{
+  if(batchRequest || zipJob || $('download-all').disabled)return;
+  $('batch-options').hidden=true;$('download-all').setAttribute('aria-expanded','false');zipProgress=null;
   const targetTab=tabId;
   const titles=(collection.items||[]).filter(item=>['ready','error'].includes(item.status)).map(item=>({itemId:item.id,title:cards.get(item.id)?.querySelector('.title-input').value || ''}));
   batchRequest=true;$('download-all').disabled=true;let error=null;
@@ -145,9 +153,44 @@ $('download-all').addEventListener('click',async()=>{
   }catch{error='Não foi possível iniciar o lote.';}
   finally{batchRequest=false;await refresh();if(error)notice(error);}
 });
+async function openImage(itemId){
+ try{
+  const response=await chrome.runtime.sendMessage({type:'CLICKIMAGE_OPEN_IMAGE',tabId,itemId});
+  if(!response?.ok)notice(response?.error || 'Não foi possível abrir a imagem.');
+  else if(!response.zoomSet)notice('Imagem aberta. O Chrome não permitiu ajustar o zoom desta aba.');
+ }catch{notice('Não foi possível abrir a imagem.')}
+}
+async function saveArchive(blob,signal){
+ const url=URL.createObjectURL(blob);let id,timer;
+ try{
+  id=await chrome.downloads.download({url,filename:'ClickImage.zip',conflictAction:'uniquify',saveAs:false});
+  await new Promise((resolve,reject)=>{
+   let settled=false;
+   const clean=()=>{settled=true;clearTimeout(timer);signal.removeEventListener('abort',cancel);chrome.downloads.onChanged.removeListener(changed)};
+   const finish=state=>{if(state==='complete'){clean();resolve()}else if(state==='interrupted'){clean();reject(new Error('Download do ZIP interrompido. Confira os downloads do Chrome.'))}};
+   const cancel=()=>{clean();reject(new DOMException('ZIP cancelado.','AbortError'))};
+   const changed=delta=>{if(delta.id===id)finish(delta.state?.current)};
+   async function poll(){try{const [download]=await chrome.downloads.search({id});if(!download)throw new Error('Download não encontrado.');finish(download.state);if(!settled && download.state==='in_progress')timer=setTimeout(poll,2000)}catch{clean();reject(new Error('Não foi possível conferir o download do ZIP.'))}}
+   chrome.downloads.onChanged.addListener(changed);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();else void poll();
+  });
+ }finally{clearTimeout(timer);URL.revokeObjectURL(url)}
+}
+$('batch-zip').addEventListener('click',async()=>{
+ if(zipJob || batchRequest || $('download-all').disabled)return;
+ const targetTab=tabId,job=new AbortController();zipJob=job;
+ const items=(collection.items||[]).map(item=>({...item,title:cards.get(item.id)?.querySelector('.title-input').value || item.title}));
+ zipProgress='Preparando ZIP · mantenha o painel aberto…';render(collection);
+ try{
+  const result=await ClickImageZip.build(items,{signal:job.signal,onProgress:progress=>{zipProgress=`ZIP: ${progress.finished} de ${progress.total} verificadas · ${progress.included} incluídas${progress.failed?` · ${progress.failed} com erro`:''}`;if(tabId===targetTab)render(collection)}});
+  if(job.signal.aborted)throw new DOMException('ZIP cancelado.','AbortError');
+  zipProgress='Salvando ZIP…';render(collection);await saveArchive(result.blob,job.signal);
+  zipProgress=`ZIP salvo: ${result.included} imagens${result.failures.length?` · ${result.failures.length} não incluídas: `+result.failures.map(failure=>failure.name+' ('+failure.error+')').join('; '):''}`;
+ }catch(error){zipProgress=error.name==='AbortError'?null:error.message || 'Não foi possível criar o ZIP.';}
+ finally{if(zipJob===job)zipJob=null;if(tabId===targetTab)render(collection);else zipProgress=null}
+});
 $('gallery-toggle').addEventListener('click',()=>{galleryOpen=!galleryOpen;$('gallery-toggle').setAttribute('aria-pressed',String(galleryOpen));renderGallery(collection.items||[])});
 $('layout').addEventListener('change',()=>{ $('image-list').dataset.layout=$('layout').value;chrome.storage.local?.set({clickimageLayout:$('layout').value}).catch(()=>{}); });
-try{chrome.storage.local?.get('clickimageLayout').then(value=>{if(['list','compact','grid'].includes(value.clickimageLayout)){$('layout').value=value.clickimageLayout;$('image-list').dataset.layout=value.clickimageLayout}}).catch(()=>{});}catch{}
+try{chrome.storage.local?.get('clickimageLayout').then(value=>{const layout=value.clickimageLayout==='compact'?'list':value.clickimageLayout;if(['list','grid'].includes(layout)){$('layout').value=layout;$('image-list').dataset.layout=layout;if(value.clickimageLayout==='compact')chrome.storage.local.set({clickimageLayout:'list'}).catch(()=>{})}}).catch(()=>{});}catch{}
 $('help').addEventListener('click',()=>{$('help-text').hidden=!$('help-text').hidden});
 chrome.storage.onChanged.addListener((changes,area)=>{if(area==='session' && tabId && changes[`clickimage:${tabId}`])render(changes[`clickimage:${tabId}`].newValue || {status:'idle',items:[]})});
 chrome.tabs.onActivated.addListener(refresh);

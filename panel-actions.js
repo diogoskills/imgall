@@ -7,6 +7,22 @@
   return 'https://lens.google.com/uploadbyurl?url='+encodeURIComponent(url);
  }
  function isPngDataURL(raw){return typeof raw==='string' && raw.length<24*1024*1024 && /^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(raw);}
+ async function openImage(raw,tabs=root.chrome.tabs){
+  const url=root.ClickImageUtils.validateUrl(raw);
+  if(!url)throw new Error('URL de imagem inválida.');
+  const tab=await tabs.create({url,active:false});
+  // Apply after navigation: the image host's saved zoom could otherwise win.
+  await new Promise(resolve=>{
+   let timer;const done=()=>{clearTimeout(timer);tabs.onUpdated.removeListener(updated);resolve()};
+   const updated=(id,change)=>{if(id===tab.id && change.status==='complete')done()};
+   tabs.onUpdated.addListener(updated);timer=setTimeout(done,15000);
+   tabs.get(tab.id).then(current=>{if(current.status==='complete')done()}).catch(done);
+  });
+  let zoomSet=true;
+  try{await tabs.setZoomSettings(tab.id,{mode:'automatic',scope:'per-tab'});await tabs.setZoom(tab.id,1)}catch{zoomSet=false}
+  await tabs.update(tab.id,{active:true});
+  return {ok:true,zoomSet};
+ }
  async function convertWebpToPng(url){
   if(!root.ClickImageUtils.validateUrl(url))throw new Error('URL inválida.');
   const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),15000);
@@ -31,6 +47,6 @@
   }catch(error){if(error.name==='AbortError')throw new Error('A conversão demorou demais. Tente baixar o original.');if(error.name==='TypeError')throw new Error('O site bloqueou a leitura para conversão. Use o download original.');throw error;}
   finally{clearTimeout(timer);bitmap?.close();if(reader)await reader.cancel().catch(()=>{});}
  }
- root.ClickImageActions={reverseSearchURL,isPngDataURL,convertWebpToPng};
+ root.ClickImageActions={reverseSearchURL,isPngDataURL,convertWebpToPng,openImage};
  if(typeof module!=='undefined')module.exports=root.ClickImageActions;
 })(globalThis);

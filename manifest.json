@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ClickImage",
-  "version": "2.5.1",
+  "version": "2.6.0",
   "description": "Selecione uma imagem da página e baixe seu arquivo original.",
   "permissions": [
     "activeTab",
