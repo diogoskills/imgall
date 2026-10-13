@@ -1,0 +1,19 @@
+<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>ClickImage — testes manuais</title>
+<style>body{font:16px system-ui;padding:24px}img,.background{width:200px;height:140px;object-fit:cover;margin:12px}.background{background-image:url('../icons/128.png')}iframe{height:180px}</style>
+<h1>ClickImage — testes manuais</h1><p>Ative a extensão para cada seleção. Teste ESC, links, inserção dinâmica e download único. Os ícones ampliados são recursos locais previsíveis.</p>
+<img src="../icons/128.png" alt="Imagem simples">
+<a href="#navegou" id="link"><img src="../icons/128.png?link=1" alt="Imagem em link"></a>
+<picture><source srcset="../icons/48.png 1x, ../icons/128.png 2x"><img src="../icons/48.png" alt="Picture"></picture>
+<img src="../icons/48.png" srcset="../icons/48.png 48w, ../icons/128.png 128w" sizes="200px" alt="Srcset">
+<img loading="lazy" src="../icons/128.png?lazy=1" alt="Lazy">
+<div class="background">Background CSS</div>
+<button id="add">Adicionar imagem dinâmica</button><button id="normal">Botão normal</button><span id="count">0</span>
+<img width="16" height="16" style="width:16px;height:16px" src="../icons/16.png" alt="Ícone ignorado">
+<img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='140'%3E%3Crect width='200' height='140' fill='orange'/%3E%3C/svg%3E" alt="Data não suportada">
+<canvas width="200" height="140"></canvas><div id="shadow"></div>
+<script>
+document.querySelector('#add').onclick=()=>{const i=new Image();i.src='../icons/128.png?dynamic=1';i.alt='Dinâmica';document.body.append(i)};
+document.querySelector('#normal').onclick=()=>document.querySelector('#count').textContent++;
+document.querySelector('#shadow').attachShadow({mode:'open'}).innerHTML='<img width="200" height="140" src="../icons/128.png?shadow=1">';
+const c=document.querySelector('canvas').getContext('2d');c.fillStyle='purple';c.fillRect(0,0,200,140);
+</script></html>
