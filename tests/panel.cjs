@@ -101,6 +101,30 @@ const path=require('node:path');const http=require('node:http');const fs=require
   assert.ok(await page.locator('#gallery img').first().evaluate(el=>el.getBoundingClientRect().width)>32);
   await page.screenshot({path:'/workspace/scratch/clickimage-gallery.png',fullPage:true});
   await page.locator('#gallery-toggle').click();
+  // Constrained grid rows must retain each card's intrinsic height, including
+  // mixed actions and newly appended cards. Check geometry, not just CSS gap.
+  async function assertGridSpacing() {
+    const rows=await page.locator('.image-card').evaluateAll(cards=>{
+      const rows=[];
+      for(const card of cards){const r=card.getBoundingClientRect();let row=rows.find(row=>Math.abs(row.top-r.top)<1);if(!row){row={top:r.top,bottom:r.bottom};rows.push(row)}else row.bottom=Math.max(row.bottom,r.bottom)}
+      return rows.sort((a,b)=>a.top-b.top);
+    });
+    assert.ok(rows.length>1);
+    for(let i=1;i<rows.length;i++)assert.ok(rows[i].top-rows[i-1].bottom>=15.5,JSON.stringify(rows));
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  }
+  await page.locator('#layout').selectOption('grid');
+  for(const width of [700,360,280]){
+    await page.setViewportSize({width,height:650});
+    await assertGridSpacing();
+  }
+  await page.evaluate(()=>setPanelState({...mockState,items:[...mockState.items,{...mockState.items[0],id:'grid-new',format:'WEBP'}]}));
+  await assertGridSpacing();
+  await page.locator('#gallery-toggle').click();await assertGridSpacing();
+  await page.locator('#gallery-toggle').click();
+  await page.evaluate(()=>setPanelState({...mockState,items:mockState.items.filter(item=>item.id!=='grid-new')}));
+  await page.setViewportSize({width:360,height:850});
+  await page.locator('#layout').selectOption('list');
   await page.locator('.remove').first().click();await page.waitForFunction(()=>document.querySelectorAll('.image-card').length===5);
   assert.equal(await page.locator('#download-all').isVisible(),true);
   await page.locator('#download-all').click();
@@ -134,6 +158,6 @@ const path=require('node:path');const http=require('node:http');const fs=require
   await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
   assert.equal(await page.locator('#select').getAttribute('aria-pressed'),'false');
   assert.deepEqual(errors,[]);
-  console.log('PASS: manual hunt; multiple previews; editable download titles; no automatic download; continued hunting; vivid active button; trash clears collection; batch button at 4+; hidden CDN domains; 4+ scroll; fixed panel height; draft preservation; per-image removal; preview failure; tab isolation; narrow layout. Copy URL, layout choices, reverse search URL and native WebP-to-PNG codec also passed; original remains available. Chrome APIs mocked.');
+  console.log('PASS: manual hunt; multiple previews; editable download titles; no automatic download; continued hunting; vivid active button; trash clears collection; batch button at 4+; hidden CDN domains; 4+ scroll; fixed panel height; draft preservation; per-image removal; preview failure; tab isolation; narrow layout; 16px grid row spacing at 280/360/700px with new images and gallery open. Copy URL, layout choices, reverse search URL and native WebP-to-PNG codec also passed; original remains available. Chrome APIs mocked.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(error=>{console.error(error);process.exitCode=1});

@@ -42,7 +42,9 @@
   function candidate(event) {
     const path = event.composedPath();
     const pointed=path[0];
-    if (pointed instanceof Element && !pointed.closest('button, input, select, textarea')) {
+    // Leave native controls functional even when their icon is an IMG.
+    if (path.some(el=>el instanceof Element && el.matches('button, input, select, textarea'))) return null;
+    if (pointed instanceof Element) {
       const youtube=utils.youtubeContext(pointed,document.baseURI,pointed.currentSrc || pointed.src);
       if (youtube) { const el=youtube.scope;return {el:pointed,url:utils.validateUrl(pointed.currentSrc || pointed.src,document.baseURI),rect:el.getBoundingClientRect()}; }
     }
@@ -50,11 +52,12 @@
     function inspect(el, imagesOnly = false) {
       if (!(el instanceof Element) || el === host) return null;
       const rect = el.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0 || el.getAttribute('role') === 'presentation' || el.getAttribute('aria-hidden') === 'true') return null;
+      if (rect.width <= 0 || rect.height <= 0 || !visibleAtPoint(el, event.clientX, event.clientY)) return null;
       const style = getComputedStyle(el);
-      if (style.visibility !== 'visible' || Number(style.opacity) === 0) return null;
       if (el.tagName === 'IMG') return { el, url: utils.validateUrl(el.currentSrc || el.src, document.baseURI), rect };
       if (imagesOnly) return null;
+      // Posters are static resources; never capture video frames or video src.
+      if (el.tagName === 'VIDEO' && el.poster) return {el,url:utils.validateUrl(el.poster,document.baseURI),rect};
       const css = style.backgroundImage;
       if (css !== 'none' && utils.backgroundUrl(css, document.baseURI)) return { el, url: utils.backgroundUrl(css, document.baseURI), rect };
       return null;
@@ -65,10 +68,9 @@
     }
     // Hit-test like an element inspector: Instagram often targets a transparent
     // sibling overlay, so the IMG never appears in the event's composed path.
-    if (path[0]?.closest?.('button, input, select, textarea')) return null;
     for (const el of atPoint) {
       const youtube=utils.youtubeContext(el,document.baseURI,el.currentSrc || el.src);
-      if(youtube && !pointed.closest?.('button, input, select, textarea')) return {el,url:utils.validateUrl(el.currentSrc || el.src,document.baseURI),rect:youtube.scope.getBoundingClientRect()};
+      if(youtube) return {el,url:utils.validateUrl(el.currentSrc || el.src,document.baseURI),rect:youtube.scope.getBoundingClientRect()};
       const image = inspect(el, true);
       if (image) return image;
       if (el === host) continue;
@@ -81,9 +83,12 @@
           const rect = child.getBoundingClientRect();
           if (event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom) continue;
           const image = inspect(child, true);
-          if (image && !hiddenBetween(child, el)) return image;
+          if (image) return image;
         }
       }
+      // A container's background is painted below its image descendants.
+      const background = inspect(el);
+      if (background) return background;
       if (Number(style.opacity) > 0 && /^rgb\(/.test(style.backgroundColor)) break;
     }
     for (const el of path) {
@@ -92,12 +97,22 @@
     }
     return null;
   }
-  function hiddenBetween(element, container) {
-    for (let parent = element.parentElement; parent && parent !== container; parent = parent.parentElement) {
+  function visibleAtPoint(element, x, y) {
+    const rect = element.getBoundingClientRect();
+    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) return false;
+    // Bounding boxes include offscreen carousel slides and clipped descendants.
+    // Walk actual ancestors (including open shadow hosts) to respect visibility
+    // and overflow instead of selecting a resource that is not painted here.
+    for (let parent = element; parent; parent = parent.parentElement || parent.getRootNode()?.host) {
       const style = getComputedStyle(parent);
-      if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0) return true;
+      if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0) return false;
+      if (parent === element) continue;
+      const bounds = parent.getBoundingClientRect();
+      const clipX = /^(hidden|clip|scroll|auto)$/.test(style.overflowX);
+      const clipY = /^(hidden|clip|scroll|auto)$/.test(style.overflowY);
+      if ((clipX && (x < bounds.left || x >= bounds.right)) || (clipY && (y < bounds.top || y >= bounds.bottom))) return false;
     }
-    return false;
+    return true;
   }
   function move(event) {
     if (resolving) return;

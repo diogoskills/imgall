@@ -157,3 +157,16 @@ Esta etapa tem um checkpoint independente na branch `checkpoint/v1-media-gallery
 Para testar as ações e a conversão local, execute `node tests/panel.cjs`. Para as estruturas de redes sociais, execute `node tests/social.cjs`. As APIs Chrome são simuladas nos testes de interface; a abertura de tabs, área de transferência e downloads nativos ainda devem ser conferidos no Chrome local.
 
 **Retomar a V1:** use a branch publicada `checkpoint/v1-media-gallery`, commit `344f2b15ea7172c1e7e00009b3406faf8e45c409`. Ela contém somente tamanho do recurso e coluna de galeria sobre as funcionalidades anteriores. A V2 é um commit separado em `work`; nenhuma reescrita de histórico foi feita.
+
+
+### Grade e seleção sob overlays (2.5.1)
+
+A Grade mantém linhas com a altura necessária para seus cartões e **16 px de espaçamento vertical**, inclusive ao acrescentar imagens e abrir a galeria. A correção evita a compressão das linhas na área com scroll e preserva as colunas responsivas. O teste do painel mede o espaço entre os cartões em larguras de 280, 360 e 700 px, com ações diferentes e imagens adicionadas depois.
+
+O seletor reutiliza o hit-test existente para encontrar imagens e fundos CSS atrás de links e camadas transparentes. Imagens decorativas visíveis (`role="presentation"` ou `aria-hidden`) também podem ser referências; esses atributos de acessibilidade não significam que a imagem esteja oculta. A verificação de visibilidade respeita ancestrais ocultos e recortes de overflow, evitando slides de carrosséis fora da região visível. Controles nativos, mesmo com ícones de imagem, e camadas opacas mantêm seus cliques normais.
+
+Posters estáticos declarados em `video[poster]` podem ser selecionados pelo fluxo genérico. Vídeos sem poster não fornecem uma imagem por esse caminho: não há screenshot, extração de frames nem tentativa de acessar conteúdo protegido. O tratamento de thumbnails estáticas do YouTube continua prioritário e independente desse fallback.
+
+**Compatibilidade verificada em cenários sintéticos:** `tests/social.cjs` cobre Home, Explorar, perfis e posters de Reels do Instagram, cartões e fundos CSS do Pinterest, além de Facebook e X. São nove fixtures com DOM e recursos controlados no Chromium, incluindo overlays aninhados, variantes declaradas, URLs assinadas, recortes e controles. Os testes do YouTube e do seletor geral verificam regressões dos fluxos existentes. Não há reescrita de URLs de CDN nem regras novas por plataforma: a extensão usa somente recursos declarados e acessíveis.
+
+**Limitação de verificação real:** em 13/10/2026, as tentativas de acesso a YouTube, Instagram (Explorar, Reels e perfil), Pinterest, Facebook e X receberam `Tunnel connection failed: 403 Forbidden` do proxy deste ambiente. Portanto, não foi possível confirmar os layouts atuais, posts reais, contas autenticadas ou downloads nativos nesses sites. Faça essa conferência no Chrome local após recarregar a extensão e as abas; formatos e tamanhos podem continuar indisponíveis quando o servidor bloqueia CORS. Canvas, shadow roots fechados, iframes sem acesso e originais não publicados permanecem limitações.
