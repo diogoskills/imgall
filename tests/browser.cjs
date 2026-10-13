@@ -130,6 +130,38 @@ const assert = require('node:assert/strict');
     assert.equal(await cursor(),'crosshair');
     await page.keyboard.press('Escape');
     assert.notEqual(await cursor(),'crosshair');
+    // Reproduce Chrome invalidation both before and after sendMessage returns.
+    for (const mode of ['sync-click','async-click','sync-preview','sync-escape','async-escape','cleanup-throw']) {
+      const stale=await context.newPage();const staleErrors=[];
+      stale.on('pageerror',error=>staleErrors.push(error.message));
+      await stale.goto(page.url());
+      await stale.evaluate(mode=>{
+        window.staleListeners=[];window.sendCalls=0;window.failureMode=mode;
+        window.chrome={runtime:{onMessage:{addListener:cb=>staleListeners.push(cb)},sendMessage:message=>{
+          sendCalls++;
+          if(failureMode==='sync-preview' && message.type==='CLICKIMAGE_RESOLVING')return Promise.resolve({ok:true});
+          const error=new Error(failureMode==='cleanup-throw'?'Receiving end does not exist.':'Extension context invalidated.');
+          if(failureMode.startsWith('async'))return Promise.reject(error);
+          throw error;
+        }}};
+      },mode);
+      await stale.addScriptTag({path:path.join(root,'image-utils.js')});
+      await stale.addScriptTag({path:path.join(root,'content.js')});
+      await stale.evaluate(()=>{
+        ClickImageUtils.resolveImage=async()=>document.querySelector('img').src;
+        staleListeners[0]({type:'CLICKIMAGE_ACTIVATE',token:'stale-test'});
+      });
+      if(mode.endsWith('escape'))await stale.keyboard.press('Escape');
+      else await stale.locator('body > img').first().click();
+      await stale.waitForFunction(()=>getComputedStyle(document.querySelector('img')).cursor!=='crosshair');
+      assert.deepEqual(staleErrors,[],mode);
+      assert.equal(await stale.evaluate(()=>sendCalls),mode==='sync-preview'||mode==='cleanup-throw'?2:1,mode);
+      if(mode!=='cleanup-throw'){
+        const accepted=await stale.evaluate(()=>{let result;staleListeners[0]({type:'CLICKIMAGE_ACTIVATE',token:'again'},null,value=>result=value);return result?.accepted});
+        assert.equal(accepted,false,mode);
+      }
+      await stale.close();
+    }
     assert.deepEqual(errors,[]);
     console.log('PASS: real Chromium image decoding selects 128px originals over 48px previews, including a 24px CSS thumbnail, original link/attribute, inactive picture source, lazy srcset, inaccessible-original fallback and HTML-link rejection. ESC, one request, dynamic images, Shadow DOM, background and listener cleanup also passed. Chrome messaging is mocked; actual extension loading/download API not tested.');
   } finally {await context?.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(profile,{recursive:true,force:true});}

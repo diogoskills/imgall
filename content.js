@@ -3,6 +3,25 @@
   if (globalThis.__clickImageInstalled) return;
   globalThis.__clickImageInstalled = true;
   const utils = globalThis.ClickImageUtils;
+  let disconnected = false;
+  // Chrome can throw synchronously before returning a Promise after reload.
+  // An async boundary makes both throws and Promise rejections catchable.
+  async function sendMessage(message) {
+    if (disconnected) throw new Error('Extension context invalidated.');
+    try { return await chrome.runtime.sendMessage(message); }
+    catch (error) {
+      if (/extension context invalidated/i.test(error?.message || '')) {
+        disconnected = true;
+        deactivate();
+      }
+      throw error;
+    }
+  }
+  async function notifyCancellation(selectionToken) {
+    if (disconnected) return;
+    try { await sendMessage({type:'CLICKIMAGE_CANCELLED',token:selectionToken}); }
+    catch { /* A disconnected context cannot notify the replacement worker. */ }
+  }
   let active = false, resolving = false, token = '', host, box, label, selected, timer;
   function ui() {
     if (host?.isConnected) return;
@@ -93,7 +112,7 @@
   }
   let cursorStyle;
   function key(event) {
-    if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); deactivate(); feedback('Seleção cancelada.'); chrome.runtime.sendMessage({type:'CLICKIMAGE_CANCELLED',token}).catch(()=>{}); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); deactivate(); feedback('Seleção cancelada.'); void notifyCancellation(token); }
   }
   async function click(event) {
     const target = candidate(event);
@@ -105,20 +124,21 @@
     resolving = true;
     feedback('Buscando a maior imagem disponível…');
     try {
-      await chrome.runtime.sendMessage({type:'CLICKIMAGE_RESOLVING',token:selectionToken});
+      await sendMessage({type:'CLICKIMAGE_RESOLVING',token:selectionToken});
       const url = await utils.resolveImage(target.el, document.baseURI, target.url);
       if (!active || token !== selectionToken) return;
-      if (!url) { deactivate(); await chrome.runtime.sendMessage({type:'CLICKIMAGE_CANCELLED',token:selectionToken}); feedback('Esta imagem não possui uma URL HTTP/HTTPS direta acessível.'); return; }
-      const result = await chrome.runtime.sendMessage({ type: 'CLICKIMAGE_PREVIEW', token: selectionToken, url, previewUrl: target.url, label: target.el.getAttribute('alt') || 'Imagem selecionada' });
+      if (!url) { deactivate(); await notifyCancellation(selectionToken); feedback('Esta imagem não possui uma URL HTTP/HTTPS direta acessível.'); return; }
+      const result = await sendMessage({ type: 'CLICKIMAGE_PREVIEW', token: selectionToken, url, previewUrl: target.url, label: target.el.getAttribute('alt') || 'Imagem selecionada' });
       feedback(result?.ok ? 'Imagem no painel. Continue selecionando · ESC encerra.' : result?.error || 'Não foi possível guardar esta imagem.');
-    } catch { deactivate(); chrome.runtime.sendMessage({type:'CLICKIMAGE_CANCELLED',token:selectionToken}).catch(()=>{}); feedback('A extensão foi desconectada. Recarregue a página e tente novamente.'); }
+    } catch { deactivate(); await notifyCancellation(selectionToken); feedback('A extensão foi desconectada. Recarregue a página e tente novamente.'); }
     finally { resolving = false; }
   }
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (message?.type === 'CLICKIMAGE_CANCEL') { deactivate(); feedback('Seleção cancelada.'); return; }
     if (message?.type === 'CLICKIMAGE_ACTIVATE' && typeof message.token === 'string') {
+      if (disconnected) { reply?.({accepted:false}); feedback('A extensão foi atualizada. Recarregue a página.'); return; }
       if (resolving) { reply?.({ accepted: false }); feedback('Aguarde a busca da imagem selecionada.'); return; }
-      if (active) { reply?.({ accepted: false }); deactivate(); feedback('Seleção cancelada.'); chrome.runtime.sendMessage({type:'CLICKIMAGE_CANCELLED',token}).catch(()=>{}); return; }
+      if (active) { reply?.({ accepted: false }); deactivate(); feedback('Seleção cancelada.'); void notifyCancellation(token); return; }
       token = message.token; active = true; ui(); clearTimeout(timer);
       label.textContent = 'ClickImage ativo · clique em uma imagem · ESC cancela';
       cursorStyle = document.createElement('style'); cursorStyle.textContent = '*{cursor:crosshair!important}'; document.documentElement.append(cursorStyle);
