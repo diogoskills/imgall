@@ -249,3 +249,57 @@ test('batch waits for each outcome, skips saved images, resumes after suspension
  changed({id:6,state:{current:'complete'}});await tick();
  assert.equal(calls.length,6);assert.equal(values['clickimage:5'].items.length,0);
 });
+test('panel disconnect stops selection silently, keeps collected images and rejects late previews',async()=>{
+ let connected,listener;const values={'clickimage:4':{status:'resolving',selectionToken:'live',items:[{id:'keep',url:'https://example.org/a.jpg',status:'ready'}]}};const messages=[];const noop={addListener:()=>{}};
+ const chrome={runtime:{id:'ext',getURL:f=>'chrome-extension://ext/'+f,onConnect:{addListener:cb=>connected=cb},onMessage:{addListener:cb=>listener=cb}},storage:{session:{get:async key=>structuredClone({[key]:values[key]}),set:async obj=>Object.assign(values,structuredClone(obj))}},tabs:{sendMessage:async(tabId,message)=>messages.push({tabId,message}),onRemoved:noop},action:{onClicked:noop},downloads:{onChanged:noop,onDeterminingFilename:noop}};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'),{chrome,importScripts:()=>{},ClickImageUtils:u});
+ let bind,close;
+ connected({name:'clickimage-panel',sender:{id:'ext',url:'chrome-extension://ext/panel.html'},onMessage:{addListener:cb=>bind=cb},onDisconnect:{addListener:cb=>close=cb}});
+ bind({type:'bind',tabId:4});close();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(values['clickimage:4'].status,'idle');assert.equal(values['clickimage:4'].selectionToken,undefined);assert.equal(values['clickimage:4'].items.length,1);
+ assert.equal(messages[0].message.type,'CLICKIMAGE_CANCEL');assert.equal(messages[0].message.silent,true);
+ const response=await new Promise(resolve=>listener({type:'CLICKIMAGE_PREVIEW',token:'live',url:'https://example.org/late.png'},{id:'ext',tab:{id:4},frameId:0},resolve));
+ assert.equal(response.ok,false);assert.equal(values['clickimage:4'].items.length,1);
+});
+test('YouTube preview context uses the linked ID and permits only static poster paths',()=>{
+ const el={tagName:'VIDEO',closest:selector=>selector==='a[href]'?{getAttribute:()=>'/watch?v=abcdefghijk'}:null};
+ const context=u.youtubeContext(el,'https://www.youtube.com/','blob:https://www.youtube.com/preview');
+ assert.equal(context.id,'abcdefghijk');
+ for(const path of ['an_webp/abcdefghijk/preview.webp','vi/abcdefghijk/preview.gif','vi/abcdefghijk/preview.mp4','vi/otherabcdef/full.jpg'])assert.equal(u.staticYoutubeUrl('https://i.ytimg.com/'+path,context.id),false);
+ assert.equal(u.staticYoutubeUrl('https://i.ytimg.com/vi/abcdefghijk/full.jpg',context.id),true);
+ assert.equal(u.youtubeContext(el,'https://example.org/','blob:https://example.org/preview'),null);
+});
+test('format comes from response bytes, not URL suffix or Content-Type alone',async()=>{
+ assert.equal(u.formatFromBytes(Uint8Array.from([255,216,255,224])),'JPG');
+ assert.equal(u.formatFromBytes(Uint8Array.from([137,80,78,71,13,10,26,10])),'PNG');
+ assert.equal(u.formatFromBytes(Buffer.from('RIFF1234WEBPVP8 ')),'WEBP');
+ assert.equal(u.formatFromBytes(Buffer.from('\x00\x00\x00\x18ftypavif\x00\x00\x00\x00')),'AVIF');
+ assert.equal(u.formatFromBytes(Buffer.from('<html>not an image</html>')),null);
+ const fetcher=async()=>new Response(Uint8Array.from([137,80,78,71,13,10,26,10]),{headers:{'Content-Type':'image/jpeg'}});
+ assert.equal(await u.detectImageFormat('https://example.org/misleading.jpg',fetcher),'PNG');
+ assert.equal(await u.detectImageFormat('https://example.org/blocked.png',async()=>{throw new Error('CORS')}),null);
+});
+test('animated YouTube poster is replaced by highest available static metadata image, never by preview',async()=>{
+ const link={getAttribute:()=>'/watch?v=abcdefghijk'};
+ const el={tagName:'VIDEO',src:'https://preview.example/video.mp4',closest:()=>link,ownerDocument:{querySelectorAll:()=>[{textContent:playerHtml()}]}};
+ const preview='https://i.ytimg.com/an_webp/abcdefghijk/preview.webp';
+ const probed=[];
+ const probe=async url=>{probed.push(url);return {width:url.endsWith('full.jpg')?1280:120,height:720}};
+ assert.equal(await u.resolveImage(el,'https://www.youtube.com/',preview,probe),'https://i.ytimg.com/vi/abcdefghijk/full.jpg');
+ assert.ok(probed.every(url=>u.staticYoutubeUrl(url,'abcdefghijk')));
+ assert.equal(await u.resolveImage(el,'https://www.youtube.com/',preview,async url=>url.endsWith('full.jpg')?null:{width:120,height:90}),'https://i.ytimg.com/vi/abcdefghijk/small.jpg');
+ assert.equal(await u.resolveImage(el,'https://www.youtube.com/',preview,async()=>null),null);
+ const generic=image({}, {src:'https://example.org/photo.gif',currentSrc:'https://example.org/photo.gif'});
+ assert.equal(await u.resolveImage(generic,'https://example.org/',generic.src,async()=>({width:100,height:100})),generic.src);
+});
+test('verified byte format is preserved over a contradictory download MIME',async()=>{
+ let determine;const noop={addListener:()=>{}};
+ const image={id:'known',url:'https://example.org/photo.jpg',title:'Minha foto',format:'PNG',status:'downloading',downloadId:9};
+ const values={'clickimage:3':{status:'idle',items:[image]},'clickimage-download:9':{tabId:3,itemId:'known',title:'Minha foto'}};
+ const chrome={runtime:{id:'ext',onMessage:noop},storage:{session:{get:async()=>structuredClone(values),set:async obj=>Object.assign(values,structuredClone(obj))}},action:{onClicked:noop},tabs:{onRemoved:noop},downloads:{onChanged:noop,onDeterminingFilename:{addListener:cb=>determine=cb}}};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'),{chrome,importScripts:()=>{},ClickImageUtils:u});
+ const suggestion=await new Promise(resolve=>determine({id:9,byExtensionId:'ext',url:image.url,mime:'image/jpeg'},resolve));
+ assert.equal(suggestion.filename,'Minha foto.png');
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(values['clickimage:3'].items[0].format,'PNG');
+});

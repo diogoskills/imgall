@@ -16,8 +16,8 @@ const path=require('node:path');const http=require('node:http');const fs=require
   const page=await browser.newPage({viewport:{width:360,height:850}});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>{
-   window.mockTab=7;window.mockState={status:'idle',items:[]};window.commands=[];window.handlers=[];
-   window.chrome={tabs:{query:async()=>[{id:mockTab}],onActivated:{addListener:cb=>window.tabHandler=cb},onUpdated:{addListener:()=>{}}},storage:{onChanged:{addListener:cb=>handlers.push(cb)}},runtime:{sendMessage:async message=>{
+   window.panelDisconnected=0;window.mockTab=7;window.mockState={status:'idle',items:[]};window.commands=[];window.handlers=[];
+   window.chrome={tabs:{query:async()=>[{id:mockTab}],onActivated:{addListener:cb=>window.tabHandler=cb},onUpdated:{addListener:()=>{}}},storage:{onChanged:{addListener:cb=>handlers.push(cb)}},runtime:{connect:()=>({onDisconnect:{addListener:()=>{}},postMessage:()=>{},disconnect:()=>{panelDisconnected++;setPanelState({...mockState,status:'idle'})}}),sendMessage:async message=>{
     commands.push(message);
     if(message.type==='CLICKIMAGE_STATE')return {ok:true,state:mockState};
     const item=mockState.items.find(image=>image.id===message.itemId);
@@ -46,6 +46,10 @@ const path=require('node:path');const http=require('node:http');const fs=require
   await page.evaluate(item=>setPanelState({status:'idle',items:[item]}),item);
   await page.waitForFunction(()=>document.querySelector('.dimensions').textContent==='128 × 128 px');
   assert.equal(await page.locator('#select').isEnabled(),true);
+  assert.equal(await page.locator('.source').textContent(),'Imagem encontrada');
+  await page.evaluate(()=>setPanelState({...mockState,items:mockState.items.map(item=>({...item,format:'JPG'}))}));
+  assert.equal(await page.locator('.source').textContent(),'Imagem encontrada • JPG');
+  await page.evaluate(()=>setPanelState({...mockState,items:mockState.items.map(item=>({...item,format:null}))}));
   assert.equal(await page.locator('.source').textContent(),'Imagem encontrada');
   assert.equal(await page.locator('#download-all').isVisible(),false);
   assert.equal(await page.locator('.thumbnail').evaluate(el=>el.getBoundingClientRect().width),48);
@@ -93,6 +97,13 @@ const path=require('node:path');const http=require('node:http');const fs=require
   await page.setViewportSize({width:280,height:600});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   assert.equal(await page.locator('#select').evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight}),true);
+  await page.locator('#select').click();
+  await page.waitForFunction(()=>mockState.status==='selecting');
+  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide')));
+  assert.equal(await page.evaluate(()=>panelDisconnected),1);
+  assert.equal(await page.locator('#select').getAttribute('aria-pressed'),'false');
+  await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+  assert.equal(await page.locator('#select').getAttribute('aria-pressed'),'false');
   assert.deepEqual(errors,[]);
   console.log('PASS: manual hunt; multiple previews; editable download titles; no automatic download; continued hunting; vivid active button; trash clears collection; batch button at 4+; hidden CDN domains; 4+ scroll; fixed panel height; draft preservation; per-image removal; preview failure; tab isolation; narrow layout. Chrome APIs mocked.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve))}

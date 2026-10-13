@@ -136,19 +136,34 @@
     const page = new URL(base);
     if (!['youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(page.hostname)) return null;
     const image = validateUrl(fallback, base);
-    if (!image || !['i.ytimg.com', 'img.youtube.com'].includes(new URL(image).hostname)) return null;
-    const id = /^\/(?:vi|vi_webp)\/([\w-]{11})\//.exec(new URL(image).pathname)?.[1];
-    if (!id) return null;
-    const link = element.closest?.('a[href]');
-    if (link?.querySelectorAll) {
-      const images = link.querySelectorAll('img');
-      if (images.length !== 1 || images[0] !== element) return null;
+    const imageId = image && ['i.ytimg.com','img.youtube.com'].includes(new URL(image).hostname) ? /^\/(?:vi|vi_webp|an_webp)\/([\w-]{11})\//.exec(new URL(image).pathname)?.[1] : null;
+    const scope = element.closest?.('ytd-thumbnail, yt-thumbnail-view-model, #thumbnail, ytd-video-preview, #mouseover-overlay');
+    // Channel avatars outside thumbnail containers keep the generic resolver.
+    if (element.tagName === 'IMG' && !imageId && !scope) return null;
+    let link = element.closest?.('a[href]');
+    if (!link && scope) {
+      const links = [...(scope.querySelectorAll?.('a[href]') || [])];
+      const card = scope.closest?.('ytd-rich-grid-media, ytd-video-renderer, ytd-grid-video-renderer, yt-lockup-view-model');
+      links.push(...(card?.querySelectorAll('a[href]') || []));
+      const videos = links.filter(anchor=>{
+        const url=validateUrl(anchor.getAttribute('href'),base);
+        return url && new URL(url).origin===page.origin && (new URL(url).pathname==='/watch' || new URL(url).pathname.startsWith('/shorts/'));
+      });
+      const ids=new Set(videos.map(anchor=>{const url=new URL(anchor.getAttribute('href'),base);return url.searchParams.get('v') || url.pathname.split('/')[2]}));
+      if (ids.size===1) link=videos[0];
     }
+    if (!link && !imageId) return null;
     const href = validateUrl(link?.getAttribute('href') || page.href, base);
     if (!href) return null;
     const video = new URL(href);
     const linkedId = video.pathname === '/watch' ? video.searchParams.get('v') : /^\/shorts\/([\w-]{11})\/?$/.exec(video.pathname)?.[1];
-    return video.origin === page.origin && linkedId === id ? { id, url: video.href } : null;
+    return video.origin === page.origin && /^[\w-]{11}$/.test(linkedId || '') && (!imageId || linkedId===imageId) ? { id:linkedId, url:video.href, scope:scope || link || element } : null;
+  }
+  function staticYoutubeUrl(raw,id) {
+    const url=validateUrl(raw);
+    if (!url) return false;
+    const image=new URL(url);
+    return ['i.ytimg.com','img.youtube.com'].includes(image.hostname) && new RegExp(`^/(?:vi|vi_webp)/${id}/[^/]+\\.(?:jpe?g|png|webp|avif)$`,'i').test(image.pathname);
   }
   function youtubeImageUrls(html, id, base) {
     // Parse the page's declared player JSON as data; never execute site code.
@@ -174,8 +189,7 @@
             if (details?.videoId !== id || !Array.isArray(details.thumbnail?.thumbnails)) break;
             return details.thumbnail.thumbnails.slice().sort((a, b) => (Number(b.width) * Number(b.height) || 0) - (Number(a.width) * Number(a.height) || 0)).map(t => validateUrl(t.url, base)).filter(url => {
               if (!url) return false;
-              const image = new URL(url);
-              return ['i.ytimg.com', 'img.youtube.com'].includes(image.hostname) && new RegExp(`^/(?:vi|vi_webp)/${id}/`).test(image.pathname);
+              return staticYoutubeUrl(url,id);
             });
           } catch { /* Continue only with another valid declaration. */ }
           break;
@@ -204,16 +218,26 @@
   }
   async function resolveImage(element, base, fallback, probe = probeImage) {
     const deadline = Date.now() + 8000;
-    const candidates = imageCandidates(element, base, fallback);
+    let candidates = imageCandidates(element, base, fallback);
+    const youtube=youtubeContext(element,base,fallback);
+    if (youtube) {
+      // Static posters remain eligible even if hidden by a video preview.
+      for (const image of youtube.scope.querySelectorAll?.('img') || []) {
+        candidates.push(...imageCandidates(image,base,image.currentSrc || image.src));
+      }
+      candidates=candidates.filter(candidate=>staticYoutubeUrl(candidate.url,youtube.id));
+    }
     const linked = await linkedYoutubeImages(element, base, fallback, deadline - Date.now());
     for (const url of linked.reverse()) {
+      if(youtube && !staticYoutubeUrl(url,youtube.id))continue;
       if (!candidates.some(c => c.url === url)) candidates.unshift({ url, priority: 3 });
     }
+    candidates=candidates.filter((candidate,index,array)=>array.findIndex(other=>other.url===candidate.url)===index);
     // Retain the original fallback when linked metadata fills the budget.
     if (candidates.length > 24) {
       candidates.length = 24;
       const current = validateUrl(fallback, base);
-      if (current && !candidates.some(c => c.url === current)) candidates[23] = { url: current, priority: 0 };
+      if (current && (!youtube || staticYoutubeUrl(current,youtube.id)) && !candidates.some(c => c.url === current)) candidates[23] = { url: current, priority: 0 };
     }
     const available = [];
     let index = 0;
@@ -228,7 +252,37 @@
     }
     await Promise.all(Array.from({ length: Math.min(4, candidates.length) }, inspect));
     available.sort((a, b) => b.area - a.area || b.priority - a.priority);
-    return available[0]?.url || validateUrl(fallback, base);
+    return available[0]?.url || (youtube ? (staticYoutubeUrl(fallback,youtube.id)?validateUrl(fallback,base):null) : validateUrl(fallback, base));
+  }
+  function formatFromBytes(bytes) {
+    const starts=signature=>signature.every((byte,index)=>bytes[index]===byte);
+    const ascii=(offset,length)=>String.fromCharCode(...bytes.slice(offset,offset+length));
+    if (starts([255,216,255])) return 'JPG';
+    if (starts([137,80,78,71,13,10,26,10])) return 'PNG';
+    if (bytes.length>=12 && ascii(0,4)==='RIFF' && ascii(8,4)==='WEBP') return 'WEBP';
+    if (ascii(0,6)==='GIF87a' || ascii(0,6)==='GIF89a') return 'GIF';
+    if (bytes.length>=16 && ascii(4,4)==='ftyp') {
+      const boxLength=(bytes[0]*16777216)+(bytes[1]<<16)+(bytes[2]<<8)+bytes[3];
+      if(boxLength<16)return null;
+      if (['avif','avis'].includes(ascii(8,4))) return 'AVIF';
+      for(let offset=16;offset+4<=Math.min(bytes.length,boxLength,64);offset+=4)if(['avif','avis'].includes(ascii(offset,4)))return 'AVIF';
+    }
+    return null;
+  }
+  async function detectImageFormat(url, fetcher=fetch) {
+    if (!validateUrl(url)) return null;
+    const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),1500);
+    let reader;
+    try {
+      const response=await fetcher(url,{headers:{Range:'bytes=0-4095'},credentials:'same-origin',signal:abort.signal});
+      if (!response.ok || !response.body) return null;
+      reader=response.body.getReader();
+      const chunks=[];let length=0;
+      while(length<64){const {value,done}=await reader.read();if(done)break;chunks.push(value.slice(0,4096-length));length+=chunks.at(-1).length;}
+      const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
+      return formatFromBytes(bytes);
+    } catch { return null; }
+    finally {clearTimeout(timer);if(reader)await reader.cancel().catch(()=>{});}
   }
   function imageExtension(mime) {
     return ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg', 'image/bmp': 'bmp', 'image/x-ms-bmp': 'bmp', 'image/tiff': 'tif', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico' })[String(mime || '').split(';')[0].trim().toLowerCase()] || null;
@@ -260,7 +314,7 @@
     const extension = imageExtension(mime) || /\.(jpg|jpeg|png|webp|avif|gif|svg|bmp|tiff?|ico)$/i.exec(filename(url))?.[1].toLowerCase();
     return clean + (extension ? '.' + extension : '');
   }
-  const api = { validateUrl, parseSrcset, imageUrl, imageCandidates, resolveImage, youtubeContext, youtubeImageUrls, backgroundUrl, imageExtension, filename, safeTitle, downloadFilename };
+  const api = { validateUrl, parseSrcset, imageUrl, imageCandidates, resolveImage, youtubeContext, staticYoutubeUrl, youtubeImageUrls, detectImageFormat, formatFromBytes, backgroundUrl, imageExtension, filename, safeTitle, downloadFilename };
   root.ClickImageUtils = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

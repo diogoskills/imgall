@@ -22,7 +22,7 @@
     try { await sendMessage({type:'CLICKIMAGE_CANCELLED',token:selectionToken}); }
     catch { /* A disconnected context cannot notify the replacement worker. */ }
   }
-  let active = false, resolving = false, token = '', host, box, label, selected, timer;
+  let active = false, resolving = false, silentStopped=false, token = '', host, box, label, selected, timer;
   function ui() {
     if (host?.isConnected) return;
     host = document.createElement('div');
@@ -41,6 +41,11 @@
   }
   function candidate(event) {
     const path = event.composedPath();
+    const pointed=path[0];
+    if (pointed instanceof Element && !pointed.closest('button, input, select, textarea')) {
+      const youtube=utils.youtubeContext(pointed,document.baseURI,pointed.currentSrc || pointed.src);
+      if (youtube) { const el=youtube.scope;return {el:pointed,url:utils.validateUrl(pointed.currentSrc || pointed.src,document.baseURI),rect:el.getBoundingClientRect()}; }
+    }
     const atPoint = document.elementsFromPoint(event.clientX, event.clientY);
     function inspect(el, imagesOnly = false) {
       if (!(el instanceof Element) || el === host) return null;
@@ -62,6 +67,8 @@
     // sibling overlay, so the IMG never appears in the event's composed path.
     if (path[0]?.closest?.('button, input, select, textarea')) return null;
     for (const el of atPoint) {
+      const youtube=utils.youtubeContext(el,document.baseURI,el.currentSrc || el.src);
+      if(youtube && !pointed.closest?.('button, input, select, textarea')) return {el,url:utils.validateUrl(el.currentSrc || el.src,document.baseURI),rect:youtube.scope.getBoundingClientRect()};
       const image = inspect(el, true);
       if (image) return image;
       if (el === host) continue;
@@ -128,18 +135,24 @@
       const url = await utils.resolveImage(target.el, document.baseURI, target.url);
       if (!active || token !== selectionToken) return;
       if (!url) { deactivate(); await notifyCancellation(selectionToken); feedback('Esta imagem não possui uma URL HTTP/HTTPS direta acessível.'); return; }
-      const result = await sendMessage({ type: 'CLICKIMAGE_PREVIEW', token: selectionToken, url, previewUrl: target.url, label: target.el.getAttribute('alt') || 'Imagem selecionada' });
+      const format=await utils.detectImageFormat(url);
+      if (!active || token!==selectionToken) return;
+      if(format==='GIF' && utils.youtubeContext(target.el,document.baseURI,target.url)) {
+        deactivate();await notifyCancellation(selectionToken);feedback('A thumbnail estática não está disponível. A prévia animada não será baixada.');return;
+      }
+      const result = await sendMessage({ type: 'CLICKIMAGE_PREVIEW', token: selectionToken, url, format, previewUrl: target.url, label: target.el.getAttribute('alt') || 'Imagem selecionada' });
+      if (!active || token!==selectionToken) return;
       feedback(result?.ok ? 'Imagem no painel. Continue selecionando · ESC encerra.' : result?.error || 'Não foi possível guardar esta imagem.');
-    } catch { deactivate(); await notifyCancellation(selectionToken); feedback('A extensão foi desconectada. Recarregue a página e tente novamente.'); }
+    } catch { deactivate(); await notifyCancellation(selectionToken); if(!silentStopped)feedback('A extensão foi desconectada. Recarregue a página e tente novamente.'); }
     finally { resolving = false; }
   }
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
-    if (message?.type === 'CLICKIMAGE_CANCEL') { deactivate(); feedback('Seleção cancelada.'); return; }
+    if (message?.type === 'CLICKIMAGE_CANCEL') { deactivate(); if(message.silent){silentStopped=true;clearTimeout(timer);host?.remove();}else feedback('Seleção cancelada.'); return; }
     if (message?.type === 'CLICKIMAGE_ACTIVATE' && typeof message.token === 'string') {
       if (disconnected) { reply?.({accepted:false}); feedback('A extensão foi atualizada. Recarregue a página.'); return; }
       if (resolving) { reply?.({ accepted: false }); feedback('Aguarde a busca da imagem selecionada.'); return; }
       if (active) { reply?.({ accepted: false }); deactivate(); feedback('Seleção cancelada.'); void notifyCancellation(token); return; }
-      token = message.token; active = true; ui(); clearTimeout(timer);
+      token = message.token; active = true; silentStopped=false; ui(); clearTimeout(timer);
       label.textContent = 'ClickImage ativo · clique em uma imagem · ESC cancela';
       cursorStyle = document.createElement('style'); cursorStyle.textContent = '*{cursor:crosshair!important}'; document.documentElement.append(cursorStyle);
       window.addEventListener('pointermove', move, true);

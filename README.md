@@ -73,6 +73,7 @@ A integração opcional requer Playwright disponível no Node e Chromium:
 ```sh
 node tests/browser.cjs
 node tests/panel.cjs
+node tests/youtube.cjs
 ```
 
 Os testes de navegador verificam o seletor e o painel em páginas reais, com as APIs Chrome simuladas; não comprova carregamento da extensão nem downloads pela API real. O caminho padrão do navegador é `/usr/lib/chromium/chromium`; use `CHROMIUM_PATH` para alterá-lo. O teste cria um servidor temporário restrito ao loopback, fecha o navegador e remove o perfil de teste. Esse servidor serve somente os testes e não faz parte da extensão.
@@ -126,3 +127,11 @@ Os testes de lote simulam conclusão, interrupção, retomada do worker, cliques
 Recarregar ou atualizar a extensão invalida o contexto dos scripts antigos nas abas abertas. A comunicação trata tanto exceções síncronas quanto rejeições de Promise: encerra a seleção, remove os listeners e o cursor, evita reenviar cancelamentos pelo contexto invalidado e mostra uma orientação local. **Recarregue a aba do site** para usar a versão nova; reabrir apenas o painel não substitui o script antigo. Depois disso, erros históricos podem ser removidos em `chrome://extensions`.
 
 O teste do seletor reproduz essa falha no clique, ao enviar a prévia e ao pressionar ESC, inclusive quando a tentativa de limpeza também falha. Esses cenários são simulados no Chromium e verificam ausência de erros não tratados.
+
+### Painel fechado, thumbnails estáticas e formato (2.3)
+
+- Fechar/ocultar o painel encerra a caça nas abas associadas ao painel e remove imediatamente cursor, contorno e indicador da página. Abrir novamente mantém o modo desligado; a coleção e os downloads em andamento são preservados. A conexão de ciclo de vida usa `runtime.connect` e o cancelamento já existente, sem novas permissões.
+- Nas thumbnails do YouTube, o alvo é associado ao ID do link do vídeo, mesmo quando o ponteiro está sobre uma camada de vídeo ou imagem animada. Apenas posters estáticos declarados em caminhos `vi`/`vi_webp` do mesmo vídeo entram na busca. Caminhos de prévia `an_webp`, GIFs e vídeos são excluídos. Se não houver thumbnail estática acessível, a extensão informa a indisponibilidade em vez de baixar a animação. Avatares e imagens de outros sites mantêm o fluxo genérico.
+- Ao lado de **Imagem encontrada**, JPG/PNG/WEBP/AVIF (e formatos reconhecidos) aparecem somente com evidência: assinatura dos bytes iniciais lidos por uma solicitação limitada e sujeita a CORS, ou MIME recebido pelo Chrome no download. Não é feita inferência pela aparência, nome editado ou extensão da URL. Se a leitura não for autorizada ou a assinatura não for reconhecida, o formato não é exibido. A verificação pode acrescentar até 1,5 segundo à busca e não altera o arquivo.
+
+O teste `tests/youtube.cjs` usa HTML e respostas sintéticas no Chromium para reproduzir vídeo sobreposto e poster animado, medir as variantes estáticas, rejeitar prévias e conferir um PNG servido sob URL `.jpg`. Os testes de painel e worker verificam desconexão, cancelamento silencioso, coleção preservada e modo desligado ao reabrir. A abertura/fechamento do painel nativo e os sites reais ainda devem ser conferidos no Chrome local; APIs da extensão e respostas do YouTube são simuladas no ambiente.

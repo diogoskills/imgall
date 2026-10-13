@@ -1,6 +1,21 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let tabId=null,request=0,collection={items:[]},batchRequest=false;
+let tabId=null,request=0,collection={items:[]},batchRequest=false,lifecyclePort=null,closing=false;
+function connectPanel(){
+  if(closing)return;
+  try{lifecyclePort=chrome.runtime.connect({name:"clickimage-panel"});
+    lifecyclePort.onDisconnect.addListener(()=>{lifecyclePort=null;if(!closing)setTimeout(connectPanel,250)});
+    if(tabId)lifecyclePort.postMessage({type:"bind",tabId});
+  }catch{lifecyclePort=null;}
+}
+function bindPanel(){try{if(!lifecyclePort)connectPanel();if(tabId)lifecyclePort?.postMessage({type:"bind",tabId})}catch{lifecyclePort=null;}}
+let heartbeat=setInterval(bindPanel,20000);
+function closePanelConnection(){closing=true;clearInterval(heartbeat);try{lifecyclePort?.disconnect()}catch{}lifecyclePort=null;}
+window.addEventListener("pagehide",closePanelConnection);
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)closePanelConnection();
+  else if(closing){closing=false;connectPanel();heartbeat=setInterval(bindPanel,20000);refresh();}
+});
 const cards=new Map();
 function notice(text) { $('feedback').textContent=text||'';$('feedback').hidden=!text; }
 function render(value) {
@@ -52,7 +67,7 @@ function render(value) {
     const input=card.querySelector('.title-input');
     if(document.activeElement!==input)input.value=item.title || item.filename.replace(/\.(jpe?g|png|webp|avif|gif|svg|bmp|tiff?|ico)$/i,'');
     input.disabled=['queued','downloading','downloaded'].includes(item.status);
-    card.querySelector('.source').textContent='Imagem encontrada';
+    card.querySelector('.source').textContent='Imagem encontrada'+(['JPG','PNG','WEBP','AVIF','GIF','SVG','BMP','TIF','ICO'].includes(item.format)?' • '+item.format:'');
     const ready=['ready','error'].includes(item.status);
     card.querySelector('.download').disabled=!ready;
     card.querySelector('.download').textContent=item.status==='downloading'?'Baixando…':item.status==='downloaded'?'Salva ✓':item.status==='queued'?'Na fila':'Baixar imagem';
@@ -66,7 +81,7 @@ async function refresh(){
   try{
     const [tab]=await chrome.tabs.query({active:true,currentWindow:true});if(revision!==request)return;
     if(tabId!==tab?.id){for(const card of cards.values())card.remove();cards.clear()}
-    tabId=tab?.id || null;
+    tabId=tab?.id || null;bindPanel();
     if(!tabId){render({status:'idle',items:[]});return}
     const response=await chrome.runtime.sendMessage({type:'CLICKIMAGE_STATE',tabId});if(revision!==request)return;
     if(!response?.ok)throw new Error(response?.error || 'Não foi possível ler as imagens.');render(response.state);

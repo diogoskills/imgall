@@ -130,6 +130,11 @@ const assert = require('node:assert/strict');
     assert.equal(await cursor(),'crosshair');
     await page.keyboard.press('Escape');
     assert.notEqual(await cursor(),'crosshair');
+    await activate('close-panel');
+    await page.evaluate(()=>ciListeners[0]({type:'CLICKIMAGE_CANCEL',silent:true}));
+    assert.notEqual(await cursor(),'crosshair');
+    assert.equal(await page.evaluate(()=>ciTracked.size),0);
+    assert.equal(await page.locator('html > div').count(),0);
     // Reproduce Chrome invalidation both before and after sendMessage returns.
     for (const mode of ['sync-click','async-click','sync-preview','sync-escape','async-escape','cleanup-throw']) {
       const stale=await context.newPage();const staleErrors=[];

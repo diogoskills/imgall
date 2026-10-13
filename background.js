@@ -22,6 +22,26 @@ function badge(tabId, text, title) {
   chrome.action.setBadgeText({tabId,text}).catch(()=>{});
   chrome.action.setTitle({tabId,title}).catch(()=>{});
 }
+const panelPorts=new Map();
+async function stopSelection(tabId,silent=false) {
+  const current=await state(tabId);
+  delete current.selectionToken;current.status='idle';current.error=null;
+  await chrome.tabs.sendMessage(tabId,{type:'CLICKIMAGE_CANCEL',silent}).catch(()=>{});
+  await save(tabId,current);
+  return {ok:true};
+}
+chrome.runtime.onConnect?.addListener(port=>{
+  if(port.name!=='clickimage-panel' || !panelSender(port.sender))return;
+  const tabs=new Set();panelPorts.set(port,tabs);
+  port.onMessage.addListener(message=>{if(message?.type==='bind' && Number.isInteger(message.tabId) && message.tabId>0)tabs.add(message.tabId)});
+  port.onDisconnect.addListener(()=>{
+    panelPorts.delete(port);
+    for(const tabId of tabs){
+      if([...panelPorts.values()].some(bound=>bound.has(tabId)))continue;
+      locked(tabId,()=>stopSelection(tabId,true)).catch(()=>{});
+    }
+  });
+});
 chrome.action.onClicked.addListener(tab => {
   if (tab.id) chrome.sidePanel.open({tabId:tab.id}).catch(()=>badge(tab.id,'!','Não foi possível abrir o painel ClickImage.'));
 });
@@ -33,8 +53,17 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
     const tracking = values[downloadKey(item.id)];
     const requests = Object.entries(values).filter(([key])=>key.startsWith('clickimage:')).flatMap(([,value])=>value.items || []).filter(image=>image.url===item.url && image.status==='downloading');
     const title = tracking?.title ?? (requests.length === 1 ? requests[0].title : null);
-    const name = title ? ClickImageUtils.downloadFilename(item.url,title,item.mime) : requests.length > 1 && item.filename ? ClickImageUtils.filename('https://filename.invalid/'+encodeURIComponent(item.filename.split(/[/\\]/).pop()),item.mime) : ClickImageUtils.filename(item.url,item.mime);
+    const detected=requests.find(image=>image.id===tracking?.itemId)?.format || (requests.length===1?requests[0].format:null);
+    const namingMime=({JPG:'image/jpeg',PNG:'image/png',WEBP:'image/webp',AVIF:'image/avif',GIF:'image/gif'})[detected] || item.mime;
+    const name = title ? ClickImageUtils.downloadFilename(item.url,title,namingMime) : requests.length > 1 && item.filename ? ClickImageUtils.filename('https://filename.invalid/'+encodeURIComponent(item.filename.split(/[/\\]/).pop()),namingMime) : ClickImageUtils.filename(item.url,namingMime);
     suggest({filename:name,conflictAction:'uniquify'});
+    const format=ClickImageUtils.imageExtension(item.mime)?.toUpperCase();
+    const owner=tracking?.tabId || Object.entries(values).find(([key,value])=>key.startsWith('clickimage:') && value.items?.some(image=>image.id===requests[0]?.id))?.[0].split(':')[1];
+    if(format && owner) locked(Number(owner),async()=>{
+      const current=await state(Number(owner));
+      const image=current.items.find(image=>image.id===(tracking?.itemId || requests[0]?.id));
+      if(image && !image.format){image.format=format;await save(Number(owner),current);}
+    }).catch(()=>{});
   }).catch(()=>suggest());
   return true;
 });
@@ -154,9 +183,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
         return {ok:true};
       }
       if (message.type==='CLICKIMAGE_STOP') {
-        delete current.selectionToken;current.status='idle';current.error=null;
-        await chrome.tabs.sendMessage(tabId,{type:'CLICKIMAGE_CANCEL'}).catch(()=>{});
-        await save(tabId,current);return {ok:true};
+        return stopSelection(tabId);
       }
       if (message.type==='CLICKIMAGE_STATE') {
         for (const item of current.items.filter(image=>image.status==='downloading' && Number.isInteger(image.downloadId))) {
@@ -184,7 +211,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
       const url=ClickImageUtils.validateUrl(message.url);
       if (!url) {await save(tabId,current);return {ok:false,error:'Imagem sem URL direta válida.'};}
       // Repeated selections should not fill the list with the same resource.
-      if (!current.items.some(image=>image.url===url)) current.items.push({id:crypto.randomUUID(),url,filename:ClickImageUtils.filename(url),title:'',status:'ready',label:typeof message.label==='string'?message.label.slice(0,200):'Imagem selecionada'});
+      if (!current.items.some(image=>image.url===url)) current.items.push({id:crypto.randomUUID(),url,filename:ClickImageUtils.filename(url),format:['JPG','PNG','WEBP','AVIF','GIF','SVG','BMP','TIF','ICO'].includes(message.format)?message.format:null,title:'',status:'ready',label:typeof message.label==='string'?message.label.slice(0,200):'Imagem selecionada'});
       current.status='selecting';
     }
     await save(tabId,current);return {ok:true};
