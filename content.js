@@ -21,15 +21,57 @@
     timer = setTimeout(() => { if (!active && !resolving) host?.remove(); }, 4500);
   }
   function candidate(event) {
-    for (const el of event.composedPath()) {
-      if (!(el instanceof Element) || el === host) continue;
+    const path = event.composedPath();
+    const atPoint = document.elementsFromPoint(event.clientX, event.clientY);
+    function inspect(el, imagesOnly = false) {
+      if (!(el instanceof Element) || el === host) return null;
       const rect = el.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0 || el.getAttribute('role') === 'presentation' || el.getAttribute('aria-hidden') === 'true') continue;
+      if (rect.width <= 0 || rect.height <= 0 || el.getAttribute('role') === 'presentation' || el.getAttribute('aria-hidden') === 'true') return null;
+      const style = getComputedStyle(el);
+      if (style.visibility !== 'visible' || Number(style.opacity) === 0) return null;
       if (el.tagName === 'IMG') return { el, url: utils.validateUrl(el.currentSrc || el.src, document.baseURI), rect };
-      const css = getComputedStyle(el).backgroundImage;
+      if (imagesOnly) return null;
+      const css = style.backgroundImage;
       if (css !== 'none' && utils.backgroundUrl(css, document.baseURI)) return { el, url: utils.backgroundUrl(css, document.baseURI), rect };
+      return null;
+    }
+    for (const el of path) {
+      const image = inspect(el, true);
+      if (image) return image;
+    }
+    // Hit-test like an element inspector: Instagram often targets a transparent
+    // sibling overlay, so the IMG never appears in the event's composed path.
+    if (path[0]?.closest?.('button, input, select, textarea')) return null;
+    for (const el of atPoint) {
+      const image = inspect(el, true);
+      if (image) return image;
+      if (el === host) continue;
+      const style = getComputedStyle(el);
+      // Also handles IMG elements with pointer-events:none, absent from the
+      // hit-test stack. Search only local containers intersecting the pointer.
+      if (!['BODY', 'HTML'].includes(el.tagName)) {
+        const images = [...el.querySelectorAll('img')].slice(0, 100).reverse();
+        for (const child of images) {
+          const rect = child.getBoundingClientRect();
+          if (event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom) continue;
+          const image = inspect(child, true);
+          if (image && !hiddenBetween(child, el)) return image;
+        }
+      }
+      if (Number(style.opacity) > 0 && /^rgb\(/.test(style.backgroundColor)) break;
+    }
+    for (const el of path) {
+      const background = inspect(el);
+      if (background) return background;
     }
     return null;
+  }
+  function hiddenBetween(element, container) {
+    for (let parent = element.parentElement; parent && parent !== container; parent = parent.parentElement) {
+      const style = getComputedStyle(parent);
+      if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0) return true;
+    }
+    return false;
   }
   function move(event) {
     selected = candidate(event);

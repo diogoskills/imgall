@@ -91,6 +91,25 @@ const assert = require('node:assert/strict');
     await page.waitForFunction(count=>ciMessages.length===count+1,count);
     assert.equal(await page.evaluate(()=>ciMessages.at(-1).token),'slow-original');
     assert.match(await page.evaluate(()=>ciMessages.at(-1).url), /128.png\?slow=1$/);
+    const overlayCount = await page.evaluate(()=>ciMessages.length);
+    await activate('instagram-overlay');
+    await page.locator('#photo-overlay').hover();
+    await page.locator('#photo-overlay').click();
+    await page.waitForFunction(count=>ciMessages.length===count+1,overlayCount);
+    const overlayUrl = new URL(await page.evaluate(()=>ciMessages.at(-1).url));
+    assert.equal(overlayUrl.searchParams.get('stp'),'dst-jpg_e35_tt6');
+    assert.equal(overlayUrl.searchParams.get('oh'),'signed-value');
+    assert.equal(overlayUrl.searchParams.get('oe'),'6AD34BE4');
+    assert.equal(await page.evaluate(()=>ciTracked.size),0);
+    await page.evaluate(()=>{
+      document.querySelector('#photo-overlay').style.background='white';
+      window.overlayClicks=0;
+      document.querySelector('#photo-overlay').addEventListener('click',()=>overlayClicks++);
+    });
+    await activate('opaque-overlay');await page.locator('#photo-overlay').click();
+    assert.equal(await page.evaluate(()=>ciMessages.length),overlayCount+1);
+    assert.equal(await page.evaluate(()=>overlayClicks),1);
+    await page.keyboard.press('Escape');
     assert.deepEqual(errors,[]);
     console.log('PASS: real Chromium image decoding selects 128px originals over 48px previews, including a 24px CSS thumbnail, original link/attribute, inactive picture source, lazy srcset, inaccessible-original fallback and HTML-link rejection. ESC, one request, dynamic images, Shadow DOM, background and listener cleanup also passed. Chrome messaging is mocked; actual extension loading/download API not tested.');
   } finally {await context?.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(profile,{recursive:true,force:true});}

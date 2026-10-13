@@ -86,3 +86,7 @@ Para testar manualmente, execute `python3 -m http.server 8000 --bind 127.0.0.1` 
 Suporte cuidadoso a frames autorizados, persistência do acompanhamento de downloads, integração com atributos de outras galerias e seleção explícita entre candidatos de resolução.
 
 Após atualizar, recarregue a extensão em `chrome://extensions` e recarregue as abas dos sites para substituir os scripts já injetados.
+
+### Seleção com camadas sobrepostas
+
+O seletor inspeciona os elementos no ponto do clique (`elementsFromPoint`) e o HTML local para alcançar fotos sob overlays transparentes, como no Instagram, inclusive `<img>` com `pointer-events: none`. O contorno corresponde à foto encontrada; sua URL `src/currentSrc` e os links associados seguem para a busca de resolução. Camadas opacas e controles nativos não são atravessados. URLs assinadas do CDN mantêm todos os parâmetros; `&amp;` do HTML é decodificado pelo próprio DOM. O recurso não abre o DevTools nem exige permissões de debugger. Uma URL expirada ou bloqueada pelo servidor ainda pode falhar.
