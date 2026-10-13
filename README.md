@@ -143,3 +143,17 @@ O cartão mostra formato identificado, resolução real e tamanho do recurso, po
 A **pasta**, ao lado da lixeira, abre uma coluna de imagens maiores à esquerda da lista. A galeria tem rolagem própria e não aumenta a altura do painel. Clique em uma imagem para localizar seu cartão; aumente a largura do painel no Chrome se desejar mais espaço.
 
 Esta etapa tem um checkpoint independente na branch `checkpoint/v1-media-gallery`. A V2 será entregue em um commit posterior de `work`; o checkpoint permite retomar o código da V1 sem sobrescrever o histórico.
+
+### V2 — ações e layouts (2.5)
+
+- O ícone de cópia copia a URL completa do recurso original encontrado, preservando seus parâmetros. A assinatura dessa URL pode expirar; não são copiados nomes ou URLs do PNG convertido.
+- Os layouts **Lista**, **Compacto** e **Grade** mantêm a mesma coleção, nomes e controles. A preferência de layout é guardada localmente; as imagens continuam apenas na sessão. A galeria da V1 permanece disponível em todos os layouts.
+- A lupa abre uma **pesquisa reversa no Google Lens**. Essa ação envia a URL ao Google somente após seu clique; imagens privadas que dependem de login podem não ser acessíveis ao buscador. Não há pesquisa automática nem envio silencioso de arquivos.
+- **PNG (beta)** aparece para WebP identificado. A conversão usa os codecs locais do Chrome e mantém a resolução; produz um PNG separado e preserva a possibilidade de baixar o original. Não usa servidor, não redimensiona e não requer permissões de acesso permanente aos sites.
+- A beta aceita WebP estático de até 16 MB e 16 megapixels, com PNG resultante de até 16 MB. WebP animado não é convertido. Bloqueios CORS, autenticação e expiração de URL são respeitados: a interface informa a falha e o download original continua disponível. PNG pode ficar maior; perfis de cor e metadados são tratados pelo codec do navegador, sem promessa de preservar metadados do WebP.
+
+**Verificação de redes sociais:** tentativas reais de acesso a Facebook, Twitter e X receberam HTTP 403 do proxy do ambiente. Isso impede afirmar validação de posts reais ou de sessões autenticadas. `tests/social.cjs` reproduz estruturas representativas de Facebook, X e Instagram para testar camada transparente, lazy srcset, maior variante declarada, parâmetros assinados e cancelamento. O seletor genérico continua sem regras invasivas específicas de cada site; apenas recursos publicados no HTML e acessíveis ao navegador são usados. Sites com canvas, frames inacessíveis, galerias privadas ou originais não declarados continuam sujeitos às limitações documentadas.
+
+Para testar as ações e a conversão local, execute `node tests/panel.cjs`. Para as estruturas de redes sociais, execute `node tests/social.cjs`. As APIs Chrome são simuladas nos testes de interface; a abertura de tabs, área de transferência e downloads nativos ainda devem ser conferidos no Chrome local.
+
+**Retomar a V1:** use a branch publicada `checkpoint/v1-media-gallery`, commit `344f2b15ea7172c1e7e00009b3406faf8e45c409`. Ela contém somente tamanho do recurso e coluna de galeria sobre as funcionalidades anteriores. A V2 é um commit separado em `work`; nenhuma reescrita de histórico foi feita.

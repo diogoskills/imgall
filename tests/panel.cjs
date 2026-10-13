@@ -16,8 +16,8 @@ const path=require('node:path');const http=require('node:http');const fs=require
   const page=await browser.newPage({viewport:{width:360,height:850}});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>{
-   window.panelDisconnected=0;window.mockTab=7;window.mockState={status:'idle',items:[]};window.commands=[];window.handlers=[];
-   window.chrome={tabs:{query:async()=>[{id:mockTab}],onActivated:{addListener:cb=>window.tabHandler=cb},onUpdated:{addListener:()=>{}}},storage:{onChanged:{addListener:cb=>handlers.push(cb)}},runtime:{connect:()=>({onDisconnect:{addListener:()=>{}},postMessage:()=>{},disconnect:()=>{panelDisconnected++;setPanelState({...mockState,status:'idle'})}}),sendMessage:async message=>{
+   window.panelDisconnected=0;Object.defineProperty(navigator,'clipboard',{value:{writeText:async url=>window.copiedURL=url}});window.mockTab=7;window.mockState={status:'idle',items:[]};window.commands=[];window.handlers=[];
+   window.chrome={tabs:{create:async options=>{window.searchURL=options.url;return {id:123}},query:async()=>[{id:mockTab}],onActivated:{addListener:cb=>window.tabHandler=cb},onUpdated:{addListener:()=>{}}},storage:{onChanged:{addListener:cb=>handlers.push(cb)}},runtime:{connect:()=>({onDisconnect:{addListener:()=>{}},postMessage:()=>{},disconnect:()=>{panelDisconnected++;setPanelState({...mockState,status:'idle'})}}),sendMessage:async message=>{
     commands.push(message);
     if(message.type==='CLICKIMAGE_STATE')return {ok:true,state:mockState};
     const item=mockState.items.find(image=>image.id===message.itemId);
@@ -42,10 +42,26 @@ const path=require('node:path');const http=require('node:http');const fs=require
   await page.locator('#select').click();
   assert.equal(await page.locator('#select').getAttribute('aria-pressed'),'false');
   assert.equal(await page.locator('#select').evaluate(el=>getComputedStyle(el).backgroundImage),normalBackground);
+  const conversion=await page.evaluate(async base=>{
+    const response=await fetch(base+'/icons/128.png');const bitmap=await createImageBitmap(await response.blob());
+    const canvas=new OffscreenCanvas(bitmap.width,bitmap.height);canvas.getContext('2d').drawImage(bitmap,0,0);bitmap.close();
+    const webp=await canvas.convertToBlob({type:'image/webp'});const blobURL=URL.createObjectURL(webp);
+    const saved=window.fetch;window.fetch=async url=>url===base+'/webp-fixture'?new Response(webp):saved(url);
+    try{const result=await ClickImageActions.convertWebpToPng(base+'/webp-fixture');const png=await saved(result.dataURL);return {width:result.width,height:result.height,format:ClickImageUtils.formatFromBytes(new Uint8Array(await (await png.blob()).slice(0,64).arrayBuffer()))};}
+    finally{window.fetch=saved;URL.revokeObjectURL(blobURL)}
+  },base);
+  assert.deepEqual(conversion,{width:128,height:128,format:'PNG'});
+  const rejected=await page.evaluate(async base=>{try{await ClickImageActions.convertWebpToPng(base+'/icons/128.png');return false}catch{return true}},base);
+  assert.equal(rejected,true);
   const item={id:'first',url:base+'/icons/128.png',filename:'128.png',title:'',status:'ready'};
   await page.evaluate(item=>setPanelState({status:'idle',items:[item]}),item);
   await page.waitForFunction(()=>document.querySelector('.dimensions').textContent.includes('128 × 128 px'));
   assert.equal(await page.locator('#select').isEnabled(),true);
+  await page.locator('.copy-url').click();assert.equal(await page.evaluate(()=>copiedURL),item.url);
+  await page.locator('.reverse-search').click();assert.equal(new URL(await page.evaluate(()=>searchURL)).searchParams.get('url'),item.url);
+  await page.locator('#layout').selectOption('compact');assert.equal(await page.locator('#image-list').getAttribute('data-layout'),'compact');
+  await page.locator('#layout').selectOption('grid');assert.equal(await page.locator('#image-list').getAttribute('data-layout'),'grid');
+  await page.locator('#layout').selectOption('list');
   assert.equal(await page.locator('.source').textContent(),'Imagem encontrada');
   await page.evaluate(()=>setPanelState({...mockState,items:mockState.items.map(item=>({...item,format:'JPG'}))}));
   assert.equal(await page.locator('.source').textContent(),'Imagem encontrada');
@@ -103,6 +119,13 @@ const path=require('node:path');const http=require('node:http');const fs=require
   await page.setViewportSize({width:280,height:600});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   assert.equal(await page.locator('#select').evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight}),true);
+  await page.evaluate(item=>setPanelState({status:'idle',items:[{...item,format:'WEBP'}]}),item);
+  await page.locator('#layout').selectOption('grid');
+  await page.locator('#gallery-toggle').click();
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  assert.equal(await page.locator('.convert-png').isVisible(),true);
+  await page.locator('#gallery-toggle').click();
+  await page.locator('#layout').selectOption('list');
   await page.locator('#select').click();
   await page.waitForFunction(()=>mockState.status==='selecting');
   await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide')));
@@ -111,6 +134,6 @@ const path=require('node:path');const http=require('node:http');const fs=require
   await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
   assert.equal(await page.locator('#select').getAttribute('aria-pressed'),'false');
   assert.deepEqual(errors,[]);
-  console.log('PASS: manual hunt; multiple previews; editable download titles; no automatic download; continued hunting; vivid active button; trash clears collection; batch button at 4+; hidden CDN domains; 4+ scroll; fixed panel height; draft preservation; per-image removal; preview failure; tab isolation; narrow layout. Chrome APIs mocked.');
+  console.log('PASS: manual hunt; multiple previews; editable download titles; no automatic download; continued hunting; vivid active button; trash clears collection; batch button at 4+; hidden CDN domains; 4+ scroll; fixed panel height; draft preservation; per-image removal; preview failure; tab isolation; narrow layout. Copy URL, layout choices, reverse search URL and native WebP-to-PNG codec also passed; original remains available. Chrome APIs mocked.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(error=>{console.error(error);process.exitCode=1});

@@ -16,7 +16,7 @@ document.addEventListener('visibilitychange',()=>{
   if(document.hidden)closePanelConnection();
   else if(closing){closing=false;connectPanel();heartbeat=setInterval(bindPanel,20000);refresh();}
 });
-const cards=new Map(),galleryImages=new Map();let galleryOpen=false;
+const cards=new Map(),galleryImages=new Map(),converting=new Set();let galleryOpen=false;
 function details(card){
  const item=card._item;if(!item)return;
  const type=["JPG","PNG","WEBP","AVIF","GIF","SVG","BMP","TIF","ICO"].includes(item.format)?item.format:null;
@@ -67,6 +67,23 @@ function render(value) {
       const input=card.querySelector('.title-input'),img=card.querySelector('.preview');
       input.addEventListener('change',()=>command('CLICKIMAGE_RENAME',{itemId:item.id,title:input.value}));
       input.addEventListener('keydown',event=>{if(event.key==='Enter')input.blur()});
+      card.querySelector('.copy-url').addEventListener('click',()=>{
+        navigator.clipboard.writeText(card._item.url).then(()=>notice('URL original copiada.')).catch(()=>notice('Não foi possível copiar. Confira a permissão de área de transferência.'));
+      });
+      card.querySelector('.reverse-search').addEventListener('click',()=>{
+        chrome.tabs.create({url:ClickImageActions.reverseSearchURL(card._item.url)}).catch(()=>notice('Não foi possível abrir a pesquisa reversa.'));
+      });
+      card.querySelector('.convert-png').addEventListener('click',async()=>{
+        const targetTab=tabId;if(converting.has(item.id))return;converting.add(item.id);render(collection);
+        let error=null;
+        try{
+          const title=input.value;
+          const converted=await ClickImageActions.convertWebpToPng(card._item.url);
+          const response=await chrome.runtime.sendMessage({type:'CLICKIMAGE_CONFIRM_PNG',tabId:targetTab,itemId:item.id,title,dataURL:converted.dataURL});
+          if(!response?.ok)error=response?.error || 'Não foi possível baixar o PNG.';
+        }catch(failure){error=failure.message || 'O site bloqueou a conversão. O download original continua disponível.';}
+        finally{converting.delete(item.id);await refresh();if(error)notice(error);}
+      });
       card.querySelector('.remove').addEventListener('click',()=>command('CLICKIMAGE_REMOVE',{itemId:item.id}));
       card.querySelector('.download').addEventListener('click',async()=>{
         const button=card.querySelector('.download');if(button.disabled)return;button.disabled=true;
@@ -83,9 +100,10 @@ function render(value) {
     card._item=item;
     const input=card.querySelector('.title-input');
     if(document.activeElement!==input)input.value=item.title || item.filename.replace(/\.(jpe?g|png|webp|avif|gif|svg|bmp|tiff?|ico)$/i,'');
-    input.disabled=['queued','downloading','downloaded'].includes(item.status);
+    input.disabled=converting.has(item.id)||['queued','downloading','downloaded'].includes(item.status);
     card.querySelector('.source').textContent='Imagem encontrada';
     if(card._dimensions)details(card);
+    const pngButton=card.querySelector('.convert-png');pngButton.hidden=item.format!=='WEBP';pngButton.disabled=converting.has(item.id)||['downloading','downloaded'].includes(item.pngStatus);pngButton.textContent=converting.has(item.id)?'Convertendo…':item.pngStatus==='downloading'?'PNG baixando…':item.pngStatus==='downloaded'?'PNG salva ✓':'PNG (beta)';
     const ready=['ready','error'].includes(item.status);
     card.querySelector('.download').disabled=!ready;
     card.querySelector('.download').textContent=item.status==='downloading'?'Baixando…':item.status==='downloaded'?'Salva ✓':item.status==='queued'?'Na fila':'Baixar imagem';
@@ -128,6 +146,8 @@ $('download-all').addEventListener('click',async()=>{
   finally{batchRequest=false;await refresh();if(error)notice(error);}
 });
 $('gallery-toggle').addEventListener('click',()=>{galleryOpen=!galleryOpen;$('gallery-toggle').setAttribute('aria-pressed',String(galleryOpen));renderGallery(collection.items||[])});
+$('layout').addEventListener('change',()=>{ $('image-list').dataset.layout=$('layout').value;chrome.storage.local?.set({clickimageLayout:$('layout').value}).catch(()=>{}); });
+try{chrome.storage.local?.get('clickimageLayout').then(value=>{if(['list','compact','grid'].includes(value.clickimageLayout)){$('layout').value=value.clickimageLayout;$('image-list').dataset.layout=value.clickimageLayout}}).catch(()=>{});}catch{}
 $('help').addEventListener('click',()=>{$('help-text').hidden=!$('help-text').hidden});
 chrome.storage.onChanged.addListener((changes,area)=>{if(area==='session' && tabId && changes[`clickimage:${tabId}`])render(changes[`clickimage:${tabId}`].newValue || {status:'idle',items:[]})});
 chrome.tabs.onActivated.addListener(refresh);
