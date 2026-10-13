@@ -16,7 +16,23 @@ document.addEventListener('visibilitychange',()=>{
   if(document.hidden)closePanelConnection();
   else if(closing){closing=false;connectPanel();heartbeat=setInterval(bindPanel,20000);refresh();}
 });
-const cards=new Map();
+const cards=new Map(),galleryImages=new Map();let galleryOpen=false;
+function details(card){
+ const item=card._item;if(!item)return;
+ const type=["JPG","PNG","WEBP","AVIF","GIF","SVG","BMP","TIF","ICO"].includes(item.format)?item.format:null;
+ const dimensions=card._dimensions?`${card._dimensions.width} × ${card._dimensions.height} px`:"Resolução indisponível";
+ card.querySelector(".dimensions").textContent=[type,dimensions,ClickImageUtils.formatFileSize(item.sizeBytes)].filter(Boolean).join(" - ");
+}
+function renderGallery(items){
+ $("gallery").hidden=!galleryOpen;$("collection-body").classList.toggle("gallery-open",galleryOpen);
+ for(const [id,image] of galleryImages)if(!items.some(item=>item.id===id)){image.remove();galleryImages.delete(id)}
+ if(!galleryOpen)return;
+ for(const item of items){if(galleryImages.has(item.id))continue;
+   const button=document.createElement("button");button.className="gallery-entry";button.setAttribute("aria-label","Ver "+(item.title||item.filename));
+   const image=document.createElement("img");image.src=item.url;image.alt=item.label||"Imagem selecionada";image.referrerPolicy="no-referrer";
+   button.append(image);button.addEventListener("click",()=>cards.get(item.id)?.scrollIntoView({block:"nearest"}));$("gallery").append(button);galleryImages.set(item.id,button);
+ }
+}
 function notice(text) { $('feedback').textContent=text||'';$('feedback').hidden=!text; }
 function render(value) {
   collection=value;
@@ -59,15 +75,17 @@ function render(value) {
         if(!await command('CLICKIMAGE_RENAME',{itemId:item.id,title:input.value}))return;
         await command('CLICKIMAGE_CONFIRM',{itemId:item.id});
       });
-      img.addEventListener('load',()=>{card.querySelector('.dimensions').textContent=`${img.naturalWidth} × ${img.naturalHeight} px`});
+      img.addEventListener('load',()=>{card._dimensions={width:img.naturalWidth,height:img.naturalHeight};details(card)});
       img.addEventListener('error',()=>{img.hidden=true;card.querySelector('.preview-fallback').hidden=false;card.querySelector('.dimensions').textContent='Prévia indisponível'});
       img.src=item.url;
       $('image-list').append(card);cards.set(item.id,card);
     }
+    card._item=item;
     const input=card.querySelector('.title-input');
     if(document.activeElement!==input)input.value=item.title || item.filename.replace(/\.(jpe?g|png|webp|avif|gif|svg|bmp|tiff?|ico)$/i,'');
     input.disabled=['queued','downloading','downloaded'].includes(item.status);
-    card.querySelector('.source').textContent='Imagem encontrada'+(['JPG','PNG','WEBP','AVIF','GIF','SVG','BMP','TIF','ICO'].includes(item.format)?' • '+item.format:'');
+    card.querySelector('.source').textContent='Imagem encontrada';
+    if(card._dimensions)details(card);
     const ready=['ready','error'].includes(item.status);
     card.querySelector('.download').disabled=!ready;
     card.querySelector('.download').textContent=item.status==='downloading'?'Baixando…':item.status==='downloaded'?'Salva ✓':item.status==='queued'?'Na fila':'Baixar imagem';
@@ -75,12 +93,13 @@ function render(value) {
     card.querySelector('.item-status').textContent=item.status==='downloaded'?'Arquivo salvo':item.status==='downloading'?'Download solicitado':item.status==='error'?'Tente novamente':item.status==='queued'?'Aguardando sua vez':'Sem compressão extra';
     card.querySelector('.item-error').hidden=!item.error;card.querySelector('.item-error').textContent=item.error || '';
   }
+  renderGallery(items);
 }
 async function refresh(){
   const revision=++request;
   try{
     const [tab]=await chrome.tabs.query({active:true,currentWindow:true});if(revision!==request)return;
-    if(tabId!==tab?.id){for(const card of cards.values())card.remove();cards.clear()}
+    if(tabId!==tab?.id){for(const card of cards.values())card.remove();cards.clear();for(const image of galleryImages.values())image.remove();galleryImages.clear()}
     tabId=tab?.id || null;bindPanel();
     if(!tabId){render({status:'idle',items:[]});return}
     const response=await chrome.runtime.sendMessage({type:'CLICKIMAGE_STATE',tabId});if(revision!==request)return;
@@ -108,6 +127,7 @@ $('download-all').addEventListener('click',async()=>{
   }catch{error='Não foi possível iniciar o lote.';}
   finally{batchRequest=false;await refresh();if(error)notice(error);}
 });
+$('gallery-toggle').addEventListener('click',()=>{galleryOpen=!galleryOpen;$('gallery-toggle').setAttribute('aria-pressed',String(galleryOpen));renderGallery(collection.items||[])});
 $('help').addEventListener('click',()=>{$('help-text').hidden=!$('help-text').hidden});
 chrome.storage.onChanged.addListener((changes,area)=>{if(area==='session' && tabId && changes[`clickimage:${tabId}`])render(changes[`clickimage:${tabId}`].newValue || {status:'idle',items:[]})});
 chrome.tabs.onActivated.addListener(refresh);

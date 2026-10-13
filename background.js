@@ -90,6 +90,7 @@ async function finishDownload(id, outcome, entry) {
   const item=current.items.find(image=>image.id===entry.itemId);
   if (item && item.downloadId === id) {
     item.status=outcome==='complete'?'downloaded':'error';
+    if(outcome==='complete'){const [download]=await chrome.downloads.search({id});if(Number.isSafeInteger(download?.fileSize)&&download.fileSize>=0)item.sizeBytes=download.fileSize;}
     item.error=outcome==='complete'?null:'Download interrompido. Confira os downloads do Chrome ou tente novamente.';
     await save(entry.tabId,current);
   }
@@ -211,7 +212,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
       const url=ClickImageUtils.validateUrl(message.url);
       if (!url) {await save(tabId,current);return {ok:false,error:'Imagem sem URL direta válida.'};}
       // Repeated selections should not fill the list with the same resource.
-      if (!current.items.some(image=>image.url===url)) current.items.push({id:crypto.randomUUID(),url,filename:ClickImageUtils.filename(url),format:['JPG','PNG','WEBP','AVIF','GIF','SVG','BMP','TIF','ICO'].includes(message.format)?message.format:null,title:'',status:'ready',label:typeof message.label==='string'?message.label.slice(0,200):'Imagem selecionada'});
+      if (!current.items.some(image=>image.url===url)) current.items.push({id:crypto.randomUUID(),url,filename:ClickImageUtils.filename(url),format:['JPG','PNG','WEBP','AVIF','GIF','SVG','BMP','TIF','ICO'].includes(message.format)?message.format:null,sizeBytes:Number.isSafeInteger(message.sizeBytes)&&message.sizeBytes>=0?message.sizeBytes:null,title:'',status:'ready',label:typeof message.label==='string'?message.label.slice(0,200):'Imagem selecionada'});
       current.status='selecting';
     }
     await save(tabId,current);return {ok:true};

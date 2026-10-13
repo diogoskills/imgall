@@ -303,3 +303,12 @@ test('verified byte format is preserved over a contradictory download MIME',asyn
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(values['clickimage:3'].items[0].format,'PNG');
 });
+test('resource size uses total Content-Range, never the range Content-Length',async()=>{
+ const bytes=Uint8Array.from([137,80,78,71,13,10,26,10]);
+ const result=await u.inspectImageResource('https://example.org/img',async()=>new Response(bytes,{status:206,headers:{'Content-Range':'bytes 0-7/2097152','Content-Length':'8'}}));
+ assert.equal(result.sizeBytes,2097152);assert.equal(result.format,'PNG');
+ const unknown=await u.inspectImageResource('https://example.org/img',async()=>new Response(bytes,{status:206,headers:{'Content-Length':'8'}}));
+ assert.equal(unknown.sizeBytes,null);
+ assert.equal(u.formatFileSize(4096),'4 KB');assert.equal(u.formatFileSize(2097152),'2 MB');
+ assert.equal(u.formatFileSize(null),'Tamanho indisponível');
+});

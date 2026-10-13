@@ -269,20 +269,32 @@
     }
     return null;
   }
-  async function detectImageFormat(url, fetcher=fetch) {
-    if (!validateUrl(url)) return null;
+  async function inspectImageResource(url, fetcher=fetch) {
+    if (!validateUrl(url)) return {format:null,sizeBytes:null};
     const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),1500);
     let reader;
     try {
       const response=await fetcher(url,{headers:{Range:'bytes=0-4095'},credentials:'same-origin',signal:abort.signal});
-      if (!response.ok || !response.body) return null;
+      if (!response.ok || !response.body) return {format:null,sizeBytes:null};
+      const range=/^bytes \d+-\d+\/(\d+)$/i.exec(response.headers.get("content-range") || "");
+      const full=response.status===200 && !response.headers.get("content-encoding") ? response.headers.get("content-length") : null;
+      const declared=range?.[1] || full;
+      const sizeBytes=declared!==null && /^\d+$/.test(declared) && Number.isSafeInteger(Number(declared)) ? Number(declared) : null;
       reader=response.body.getReader();
       const chunks=[];let length=0;
       while(length<64){const {value,done}=await reader.read();if(done)break;chunks.push(value.slice(0,4096-length));length+=chunks.at(-1).length;}
       const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
-      return formatFromBytes(bytes);
-    } catch { return null; }
+      return {format:formatFromBytes(bytes),sizeBytes};
+    } catch { return {format:null,sizeBytes:null}; }
     finally {clearTimeout(timer);if(reader)await reader.cancel().catch(()=>{});}
+  }
+  async function detectImageFormat(url, fetcher=fetch) { return (await inspectImageResource(url,fetcher)).format; }
+  function formatFileSize(bytes) {
+    if (!Number.isSafeInteger(bytes) || bytes<0) return "Tamanho indisponível";
+    if(bytes<1024)return bytes+" B";
+    const unit=bytes<1048576?"KB":bytes<1073741824?"MB":"GB";
+    const divisor=unit==="KB"?1024:unit==="MB"?1048576:1073741824;
+    return (bytes/divisor).toLocaleString("pt-BR",{maximumFractionDigits:1})+" "+unit;
   }
   function imageExtension(mime) {
     return ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg', 'image/bmp': 'bmp', 'image/x-ms-bmp': 'bmp', 'image/tiff': 'tif', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico' })[String(mime || '').split(';')[0].trim().toLowerCase()] || null;
@@ -314,7 +326,7 @@
     const extension = imageExtension(mime) || /\.(jpg|jpeg|png|webp|avif|gif|svg|bmp|tiff?|ico)$/i.exec(filename(url))?.[1].toLowerCase();
     return clean + (extension ? '.' + extension : '');
   }
-  const api = { validateUrl, parseSrcset, imageUrl, imageCandidates, resolveImage, youtubeContext, staticYoutubeUrl, youtubeImageUrls, detectImageFormat, formatFromBytes, backgroundUrl, imageExtension, filename, safeTitle, downloadFilename };
+  const api = { validateUrl, parseSrcset, imageUrl, imageCandidates, resolveImage, youtubeContext, staticYoutubeUrl, youtubeImageUrls, detectImageFormat, inspectImageResource, formatFileSize, formatFromBytes, backgroundUrl, imageExtension, filename, safeTitle, downloadFilename };
   root.ClickImageUtils = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

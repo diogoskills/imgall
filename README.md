@@ -135,3 +135,11 @@ O teste do seletor reproduz essa falha no clique, ao enviar a prévia e ao press
 - Ao lado de **Imagem encontrada**, JPG/PNG/WEBP/AVIF (e formatos reconhecidos) aparecem somente com evidência: assinatura dos bytes iniciais lidos por uma solicitação limitada e sujeita a CORS, ou MIME recebido pelo Chrome no download. Não é feita inferência pela aparência, nome editado ou extensão da URL. Se a leitura não for autorizada ou a assinatura não for reconhecida, o formato não é exibido. A verificação pode acrescentar até 1,5 segundo à busca e não altera o arquivo.
 
 O teste `tests/youtube.cjs` usa HTML e respostas sintéticas no Chromium para reproduzir vídeo sobreposto e poster animado, medir as variantes estáticas, rejeitar prévias e conferir um PNG servido sob URL `.jpg`. Os testes de painel e worker verificam desconexão, cancelamento silencioso, coleção preservada e modo desligado ao reabrir. A abertura/fechamento do painel nativo e os sites reais ainda devem ser conferidos no Chrome local; APIs da extensão e respostas do YouTube são simuladas no ambiente.
+
+### V1 — informações do arquivo e galeria (2.4)
+
+O cartão mostra formato identificado, resolução real e tamanho do recurso, por exemplo `JPG - 150 × 150 px - 4 KB`. O tamanho vem do total de `Content-Range`, de `Content-Length` de uma resposta completa sem codificação adicional, ou do tamanho final informado pelo Chrome. Respostas parciais não são confundidas com o tamanho total. Quando os dados não estão disponíveis por CORS ou pelo servidor, aparece **Tamanho indisponível**.
+
+A **pasta**, ao lado da lixeira, abre uma coluna de imagens maiores à esquerda da lista. A galeria tem rolagem própria e não aumenta a altura do painel. Clique em uma imagem para localizar seu cartão; aumente a largura do painel no Chrome se desejar mais espaço.
+
+Esta etapa tem um checkpoint independente na branch `checkpoint/v1-media-gallery`. A V2 será entregue em um commit posterior de `work`; o checkpoint permite retomar o código da V1 sem sobrescrever o histórico.

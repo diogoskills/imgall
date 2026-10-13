@@ -44,11 +44,12 @@ const path=require('node:path');const http=require('node:http');const fs=require
   assert.equal(await page.locator('#select').evaluate(el=>getComputedStyle(el).backgroundImage),normalBackground);
   const item={id:'first',url:base+'/icons/128.png',filename:'128.png',title:'',status:'ready'};
   await page.evaluate(item=>setPanelState({status:'idle',items:[item]}),item);
-  await page.waitForFunction(()=>document.querySelector('.dimensions').textContent==='128 × 128 px');
+  await page.waitForFunction(()=>document.querySelector('.dimensions').textContent.includes('128 × 128 px'));
   assert.equal(await page.locator('#select').isEnabled(),true);
   assert.equal(await page.locator('.source').textContent(),'Imagem encontrada');
   await page.evaluate(()=>setPanelState({...mockState,items:mockState.items.map(item=>({...item,format:'JPG'}))}));
-  assert.equal(await page.locator('.source').textContent(),'Imagem encontrada • JPG');
+  assert.equal(await page.locator('.source').textContent(),'Imagem encontrada');
+  assert.match(await page.locator('.dimensions').textContent(),/^JPG - 128 × 128 px -/);
   await page.evaluate(()=>setPanelState({...mockState,items:mockState.items.map(item=>({...item,format:null}))}));
   assert.equal(await page.locator('.source').textContent(),'Imagem encontrada');
   assert.equal(await page.locator('#download-all').isVisible(),false);
@@ -78,7 +79,12 @@ const path=require('node:path');const http=require('node:http');const fs=require
   assert.equal(await page.locator('.title-input').first().inputValue(),'Rascunho preservado');
   await page.locator('.title-input').first().press('Enter');
   await page.waitForFunction(()=>mockState.items[0].title==='Rascunho preservado');
+  await page.locator('#gallery-toggle').click();
+  assert.equal(await page.locator('#gallery').isVisible(),true);
+  assert.ok((await page.locator('#gallery').boundingBox()).x<(await page.locator('#image-list').boundingBox()).x);
+  assert.ok(await page.locator('#gallery img').first().evaluate(el=>el.getBoundingClientRect().width)>32);
   await page.screenshot({path:'/workspace/scratch/clickimage-gallery.png',fullPage:true});
+  await page.locator('#gallery-toggle').click();
   await page.locator('.remove').first().click();await page.waitForFunction(()=>document.querySelectorAll('.image-card').length===5);
   assert.equal(await page.locator('#download-all').isVisible(),true);
   await page.locator('#download-all').click();

@@ -135,12 +135,12 @@
       const url = await utils.resolveImage(target.el, document.baseURI, target.url);
       if (!active || token !== selectionToken) return;
       if (!url) { deactivate(); await notifyCancellation(selectionToken); feedback('Esta imagem não possui uma URL HTTP/HTTPS direta acessível.'); return; }
-      const format=await utils.detectImageFormat(url);
+      const {format,sizeBytes}=await utils.inspectImageResource(url);
       if (!active || token!==selectionToken) return;
       if(format==='GIF' && utils.youtubeContext(target.el,document.baseURI,target.url)) {
         deactivate();await notifyCancellation(selectionToken);feedback('A thumbnail estática não está disponível. A prévia animada não será baixada.');return;
       }
-      const result = await sendMessage({ type: 'CLICKIMAGE_PREVIEW', token: selectionToken, url, format, previewUrl: target.url, label: target.el.getAttribute('alt') || 'Imagem selecionada' });
+      const result = await sendMessage({ type: 'CLICKIMAGE_PREVIEW', token: selectionToken, url, format, sizeBytes, previewUrl: target.url, label: target.el.getAttribute('alt') || 'Imagem selecionada' });
       if (!active || token!==selectionToken) return;
       feedback(result?.ok ? 'Imagem no painel. Continue selecionando · ESC encerra.' : result?.error || 'Não foi possível guardar esta imagem.');
     } catch { deactivate(); await notifyCancellation(selectionToken); if(!silentStopped)feedback('A extensão foi desconectada. Recarregue a página e tente novamente.'); }
