@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ClickImage</title><link rel="stylesheet" href="panel.css"><script src="image-utils.js" defer></script><script src="panel.js" defer></script></head>
+<body>
+  <header class="topbar"><div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5"/><path d="m7 16 4-4 3 3 3-5"/><circle cx="9" cy="9" r="1"/></svg></span><span>Click<span class="purple">Image</span><small>SEU OLHAR. SEU ARQUIVO.</small></span></div><span class="version">2.0</span></header>
+  <main>
+    <div class="section-heading"><span class="eyebrow">BIBLIOTECA DA SESSÃO</span><span class="count" id="count">0 imagens</span></div>
+    <div class="intro"><h1>Encontrou?<br><span>Guarde o original.</span></h1><p>Selecione na página. Confira aqui.<br>Baixe só quando quiser.</p></div>
+    <div class="status-pill"><span class="dot" id="dot"></span><span id="status-label">Pronto para selecionar</span></div>
+    <section id="empty" class="empty-state"><div class="orb" aria-hidden="true"><svg viewBox="0 0 64 64"><rect x="13" y="13" width="38" height="38" rx="10"/><path d="m19 42 10-11 7 7 9-13"/><circle cx="24" cy="24" r="3"/><path class="spark" d="M49 5v8m-4-4h8"/></svg></div><h2 id="empty-title">Sua próxima imagem<br>começa com um clique.</h2><p id="empty-description">Use “Selecionar imagem” e clique<br>na foto que chamou sua atenção.</p><span class="key-hint"><kbd>ESC</kbd> cancela a seleção na página</span></section>
+    <section id="selection" hidden aria-label="Imagem selecionada">
+      <div class="card-heading"><span class="eyebrow">IMAGEM SELECIONADA</span><span class="selected-tag">01</span></div>
+      <article class="image-card"><div class="image-row"><div class="thumbnail"><img id="preview" alt="Prévia da imagem selecionada" referrerpolicy="no-referrer"><span id="preview-fallback" hidden aria-hidden="true">▧</span></div><div class="image-meta"><h2 id="filename"></h2><span id="source"></span><span id="dimensions">Verificando prévia…</span></div><button id="remove" class="icon-button" aria-label="Remover imagem selecionada" title="Remover imagem">×</button></div><div class="card-footer"><span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg>Arquivo direto do site</span><span id="format">IMAGEM</span></div></article>
+      <p class="preview-note">A miniatura é só uma prévia. O download usa o arquivo encontrado, sem redimensionar ou recomprimir.</p>
+      <button id="download" class="button primary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-4-4 4 4 4-4M4 13v4h12v-4"/></svg><span id="download-label">Baixar imagem</span></button>
+      <p id="download-note" class="download-note">Salva na sua pasta padrão de downloads.</p>
+    </section>
+    <p id="feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+  </main>
+  <footer><button id="select" class="button secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 3 3 13 3-5 5-3Z"/></svg><span>Selecionar imagem</span><span class="arrow" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m5 15 10-10M5 5h10v10"/></svg></span></button><div class="footer-note"><span class="privacy-dot"></span>Sem screenshots. Sem compressão extra.<button id="help" class="help" aria-label="Mostrar ajuda" title="Ajuda">?</button></div><p id="help-text" hidden>Clique no ícone ClickImage na aba do site para permitir a seleção. ESC cancela. A prévia pode falhar se o site bloquear seu carregamento; o arquivo escolhido continua disponível para confirmação.</p></footer>
+</body></html>

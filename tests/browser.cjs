@@ -22,7 +22,7 @@ const assert = require('node:assert/strict');
     await page.goto(`http://127.0.0.1:${server.address().port}/tests/manual.html`);
     await page.evaluate(() => {
       window.ciMessages = []; window.ciListeners = [];
-      window.chrome = {runtime:{onMessage:{addListener:cb=>ciListeners.push(cb)},sendMessage:async msg=>{ciMessages.push(msg);return {ok:true}}}};
+      window.chrome = {runtime:{onMessage:{addListener:cb=>ciListeners.push(cb)},sendMessage:async msg=>{if(msg.type==='CLICKIMAGE_PREVIEW')ciMessages.push(msg);return {ok:true}}}};
     });
     await page.addScriptTag({path:path.join(root,'image-utils.js')});
     await page.addScriptTag({path:path.join(root,'content.js')});

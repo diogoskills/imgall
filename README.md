@@ -14,9 +14,13 @@ Nenhuma compilação ou instalação npm é necessária para usar a extensão.
 
 ## Como usar
 
-Abra uma página HTTP/HTTPS, clique no ícone ClickImage e passe o mouse sobre uma imagem. O contorno azul indica a seleção. Clique para buscar a maior imagem acessível e iniciar o download na pasta padrão do Chrome; a seleção encerra automaticamente. A busca pode levar até oito segundos e o indicador informa seu andamento. Pressione **ESC** ou clique novamente no ícone para cancelar. Arquivos existentes recebem um nome diferente, sem sobrescrita.
+Requer Chrome **116 ou superior**. Abra uma página HTTP/HTTPS e clique no ícone ClickImage: o painel lateral abre e o modo de seleção é ativado. O contorno roxo indica a imagem. Clique para buscar a maior variante acessível; a seleção encerra e **nenhum download é iniciado ainda**.
 
-A extensão usa somente `activeTab`, `scripting` e `downloads`. O acesso à página começa com sua ação no ícone, sem permissão permanente para todos os sites.
+Confira a miniatura pequena (58px), nome, domínio e resolução no painel. Clique em **Baixar imagem** para confirmar, em **×** para remover ou em **Selecionar imagem** para escolher outra. ESC cancela a seleção na página. Cada aba mantém sua própria seleção durante a sessão do navegador; fechar o painel não apaga a prévia. Uma URL pode expirar com o tempo.
+
+A busca pode levar até oito segundos. A miniatura só é reduzida visualmente com CSS; o download recebe o arquivo encontrado sem transformação. Se o servidor bloquear a prévia, o painel informa isso e permite confirmar a URL mesmo assim. O nome e o formato final continuam seguindo o MIME informado pelo Chrome.
+
+Permissões: `activeTab` e `scripting` para selecionar após sua ação; `downloads` para baixar após confirmação; `sidePanel` para a interface lateral; `storage` para guardar seleção e estado de download em `chrome.storage.session`. Não é usado armazenamento persistente nem acesso permanente a todos os sites.
 
 ## Recursos
 
@@ -42,6 +46,7 @@ A extensão usa somente `activeTab`, `scripting` e `downloads`. O acesso à pág
 | `manifest.json` | Configuração e permissões Manifest V3 |
 | `background.js` | Ativação, validação de mensagens e API de downloads |
 | `content.js` | Seleção, destaque, feedback e cancelamento |
+| `panel.html`, `panel.css`, `panel.js` | Painel lateral dark/roxo, prévia e confirmação |
 | `image-utils.js` | Validação de URLs, srcset e nomes de arquivo |
 | `icons/` | Ícones PNG locais |
 | `tests/utils.test.cjs` | Testes automatizados sem dependências |
@@ -61,11 +66,12 @@ A integração opcional requer Playwright disponível no Node e Chromium:
 
 ```sh
 node tests/browser.cjs
+node tests/panel.cjs
 ```
 
-Este teste verifica o seletor em uma página real, com a comunicação Chrome simulada; não comprova carregamento da extensão nem downloads pela API real. O caminho padrão do navegador é `/usr/lib/chromium/chromium`; use `CHROMIUM_PATH` para alterá-lo. O teste cria um servidor temporário restrito ao loopback, fecha o navegador e remove o perfil de teste. Esse servidor serve somente os testes e não faz parte da extensão.
+Os testes de navegador verificam o seletor e o painel em páginas reais, com as APIs Chrome simuladas; não comprova carregamento da extensão nem downloads pela API real. O caminho padrão do navegador é `/usr/lib/chromium/chromium`; use `CHROMIUM_PATH` para alterá-lo. O teste cria um servidor temporário restrito ao loopback, fecha o navegador e remove o perfil de teste. Esse servidor serve somente os testes e não faz parte da extensão.
 
-Para testar manualmente, execute `python3 -m http.server 8000 --bind 127.0.0.1` na pasta do projeto e abra `http://127.0.0.1:8000/tests/manual.html` no Chrome local. Teste uma nova ativação para cada imagem, ESC, botão normal, imagem em link, srcset, picture, background, imagem dinâmica e Shadow DOM. A seção **Busca da imagem original** inclui preview de 48px com original de 128px em link/atributo, thumbnail de 24px no CSS, original indisponível e link HTML; confirme que o arquivo tem 128px de resolução real. Confirme os arquivos na lista de downloads e o link funcionando após desativar. Confira erros na página da extensão e no console do service worker em `chrome://extensions`.
+Para testar manualmente, execute `python3 -m http.server 8000 --bind 127.0.0.1` na pasta do projeto e abra `http://127.0.0.1:8000/tests/manual.html` no Chrome local. Teste uma nova ativação para cada imagem, ESC, botão normal, imagem em link, srcset, picture, background, imagem dinâmica e Shadow DOM. A seção **Busca da imagem original** inclui preview de 48px com original de 128px em link/atributo, thumbnail de 24px no CSS, original indisponível e link HTML; confirme a prévia no painel e clique em **Baixar imagem**, verificando que o arquivo tem 128px de resolução real. Antes da confirmação, não deve aparecer nenhum download. Confirme os arquivos na lista de downloads e o link funcionando após desativar. Confira erros na página da extensão e no console do service worker em `chrome://extensions`.
 
 ## Limitações conhecidas
 
@@ -78,12 +84,12 @@ Para testar manualmente, execute `python3 -m http.server 8000 --bind 127.0.0.1` 
 - Só é possível encontrar originais declarados junto à imagem, seu `<picture>`, containers exclusivos ou link envolvente; o YouTube também usa metadados da página do vídeo correspondente. Não são consultados metadados globais que possam pertencer a outra imagem, APIs privadas ou URLs inventadas. Sistemas de galeria com atributos próprios ainda podem exigir suporte adicional.
 - Limites de tempo/candidatos, políticas CSP, autenticação, recursos enormes ou formatos não decodificáveis pelo navegador podem impedir a verificação de uma variante maior. A maior resolução encontrada não é uma garantia de acesso ao arquivo mestre do site; resolução em pixels também não permite medir a compressão ou qualidade perceptual.
 - A verificação gera solicitações adicionais aos recursos candidatos e pode consumir banda. O download final usa a URL escolhida diretamente e preserva os bytes que o servidor fornece, sem transformação local.
-- Suspensão/reinício do service worker pode expirar a seleção ou perder o feedback de um download em andamento; a lista de downloads do Chrome continua sendo a referência. Reative pelo ícone se necessário.
+- Estados e seleções são guardados na memória da sessão do Chrome e podem ser restaurados após suspensão do service worker. Reiniciar o navegador, recarregar a extensão ou fechar a aba limpa o contexto correspondente. A lista de downloads do Chrome continua sendo a referência para os arquivos já baixados.
 - Sites que bloqueiam eventos antes do listener da extensão podem interferir na seleção.
 
 ## Melhorias planejadas
 
-Suporte cuidadoso a frames autorizados, persistência do acompanhamento de downloads, integração com atributos de outras galerias e seleção explícita entre candidatos de resolução.
+Suporte cuidadoso a frames autorizados, lista com múltiplas imagens por aba, integração com atributos de outras galerias e seleção explícita entre candidatos de resolução.
 
 Após atualizar, recarregue a extensão em `chrome://extensions` e recarregue as abas dos sites para substituir os scripts já injetados.
 
@@ -94,3 +100,7 @@ O seletor inspeciona os elementos no ponto do clique (`elementsFromPoint`) e o H
 ### Arquivos sem extensão na URL
 
 O nome final usa o MIME da resposta informado pelo Chrome em `onDeterminingFilename`. Endereços de CDN sem `.jpg`/`.png` recebem a extensão de imagem correspondente (JPEG, PNG, WebP e outros formatos reconhecidos), sem modificar os bytes nem a URL assinada. Extensões incompatíveis também são corrigidas. A sugestão aplica-se somente a downloads iniciados por ClickImage e mantém `uniquify`. MIME ausente ou genérico não permite inferir o formato com segurança: nesse caso, o nome original é mantido. O cabeçalho MIME não é uma inspeção dos bytes nem uma garantia de integridade do servidor.
+
+### Validação do painel
+
+Os testes automatizados verificam que seleção só gera prévia, mensagens da página não autorizam downloads, apenas a confirmação do painel inicia um arquivo e cliques repetidos são rejeitados. O teste visual verifica miniatura de 58px, estados de download, remoção, troca de aba, falha da prévia e layout estreito. O carregamento real como extensão e a API nativa de painel lateral ainda exigem validação no Chrome local: o Chromium deste ambiente não permite carregar extensões pelo mecanismo de automação disponível.

@@ -6,8 +6,8 @@ const u = require('../image-utils.js');
 test('Manifest V3 references existing resources and minimal permissions', () => {
   const m = JSON.parse(fs.readFileSync(require.resolve('../manifest.json')));
   assert.equal(m.manifest_version, 3);
-  assert.deepEqual(m.permissions, ['activeTab', 'scripting', 'downloads']);
-  for (const f of [m.background.service_worker, ...Object.values(m.icons)]) assert.ok(fs.existsSync(require('node:path').join(__dirname, '..', f)));
+  assert.deepEqual(m.permissions, ['activeTab', 'scripting', 'downloads', 'sidePanel', 'storage']);
+  for (const f of [m.background.service_worker, m.side_panel.default_path, 'panel.css', 'panel.js', ...Object.values(m.icons)]) assert.ok(fs.existsSync(require('node:path').join(__dirname, '..', f)));
 });
 test('URLs reject unsupported protocols and embedded credentials', () => {
   for (const url of ['javascript:alert(1)', 'blob:https://example.org/id', 'data:image/png;base64,abc', 'https://user:pass@example.org/x', 'invalid']) assert.equal(u.validateUrl(url), null);
@@ -28,32 +28,50 @@ test('single CSS background URL and safe filename preserve query in download URL
   assert.equal(u.filename('https://example.org/CON.png'), 'imagem');
   assert.equal(u.filename('https://example.org/a%2Fb.png'), 'a_b.png');
 });
-test('worker consumes activation once and rejects forged or unsupported requests', async () => {
-  let action, listener, downloads = [];
-  let accepted = true, generation = 0;
-  const event = cb => {listener = cb};
+test('selection only creates a preview; downloads require a trusted panel confirmation', async () => {
+  let action, listener, changed, downloads = [], accepted = true, generation = 0;
+  const values = {};
+  const noop = {addListener:()=>{}};
   const chrome = {
-    runtime:{id:'extension',onMessage:{addListener:event}},
+    storage:{session:{get:async key=>({[key]:values[key]}),set:async obj=>Object.assign(values,obj),remove:async key=>delete values[key]}},
+    sidePanel:{open:async()=>{}},
+    runtime:{id:'extension',getURL:file=>'chrome-extension://extension/'+file,onMessage:{addListener:cb=>listener=cb}},
     action:{onClicked:{addListener:cb=>action=cb},setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{},setTitle:async()=>{}},
-    scripting:{executeScript:async()=>{}},tabs:{sendMessage:async()=>({accepted}),onRemoved:{addListener:()=>{}}},
-    downloads:{download:async options=>{downloads.push(options);return 1},onChanged:{addListener:()=>{}},onDeterminingFilename:{addListener:()=>{}}}
+    scripting:{executeScript:async()=>{}},tabs:{sendMessage:async()=>({accepted}),onRemoved:noop},
+    downloads:{search:async()=>[{id:1,state:'in_progress'}],download:async options=>{downloads.push(options);return 1},onChanged:{addListener:cb=>changed=cb},onDeterminingFilename:noop}
   };
-  vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'), {chrome,importScripts:()=>{},ClickImageUtils:u,crypto:{randomUUID:()=> generation++ === 0 ? 'token' : 'replacement'}});
-  await action({id:1});
-  // A toolbar click while content resolves an original must keep its token.
-  accepted = false;
-  await action({id:1});
-  const sender={id:'extension',tab:{id:1},frameId:0};
-  let results=[];
-  const msg={type:'CLICKIMAGE_DOWNLOAD',token:'token',url:'https://example.org/a.png'};
-  listener({...msg,token:'forged'},sender,r=>results.push(r));
-  listener({...msg,url:'data:image/png,abc'},sender,r=>results.push(r));
-  listener(msg,sender,r=>results.push(r));
-  listener(msg,sender,r=>results.push(r));
-  await new Promise(resolve=>setImmediate(resolve));
+  vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'), {chrome,importScripts:()=>{},ClickImageUtils:u,crypto:{randomUUID:()=> generation++ === 0 ? 'token' : 'item-'+generation}});
+  const send=(message,sender)=>new Promise(resolve=>{const async=listener(message,sender,resolve);if(async!==true)resolve(undefined)});
+  action({id:1}); await new Promise(resolve=>setImmediate(resolve));
+  accepted=false;action({id:1});await new Promise(resolve=>setImmediate(resolve));
+  const content={id:'extension',tab:{id:1},frameId:0};
+  const panel={id:'extension',url:'chrome-extension://extension/panel.html'};
+  const selection={type:'CLICKIMAGE_PREVIEW',token:'token',url:'https://example.org/a.png',label:'Example'};
+  assert.equal(await send({...selection,token:'forged'},content),undefined);
+  assert.equal((await send({...selection,url:'data:image/png,abc'},content)).ok,false);
+  // Invalid selection consumes the token; start a fresh authorized selection.
+  accepted=true;action({id:1});await new Promise(resolve=>setImmediate(resolve));
+  selection.token='item-3';
+  assert.equal((await send(selection,content)).ok,true);
+  assert.equal(downloads.length,0);
+  const item=values['clickimage:1'].item;
+  assert.equal(values['clickimage:1'].status,'ready');
+  vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'), {chrome,importScripts:()=>{},ClickImageUtils:u,crypto:{randomUUID:()=> 'restored'}});
+  assert.equal((await send({type:'CLICKIMAGE_STATE',tabId:1},panel)).state.item.id,item.id);
+  const confirm={type:'CLICKIMAGE_CONFIRM',tabId:1,itemId:item.id};
+  assert.equal(await send(confirm,content),undefined);
+  assert.equal(await send(confirm,{id:'foreign',url:panel.url}),undefined);
+  const results=await Promise.all([send(confirm,panel),send(confirm,panel)]);
+  assert.equal(results.filter(r=>r.ok).length,1);
   assert.equal(downloads.length,1);
   assert.equal(downloads[0].conflictAction,'uniquify');
-  assert.equal(results.filter(r=>r.ok).length,1);
+  assert.equal((await send(confirm,panel)).ok,false);
+  assert.equal(values['clickimage:1'].status,'downloading');
+  vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'), {chrome,importScripts:()=>{},ClickImageUtils:u,crypto:{randomUUID:()=> 'restored'}});
+  changed({id:1,state:{current:'complete'}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(values['clickimage:1'].status,'downloaded');
+  assert.equal((await send(confirm,panel)).ok,false);
 });
 
 function image(attributes = {}, extra = {}) {

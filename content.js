@@ -10,7 +10,7 @@
     host.style.cssText = 'all:initial!important;position:fixed!important;inset:0!important;pointer-events:none!important;z-index:2147483647!important';
     const shadow = host.attachShadow({ mode: 'closed' });
     const style = document.createElement('style');
-    style.textContent = ':host{pointer-events:none} .box{position:fixed;display:none;border:3px solid #2563eb;border-radius:6px;box-sizing:border-box;box-shadow:0 0 0 3px #ffffffa0} .label{position:fixed;top:16px;right:16px;max-width:360px;padding:12px 16px;border-radius:10px;background:#172554;color:white;font:14px/1.5 system-ui;box-shadow:0 4px 20px #0004}';
+    style.textContent = ':host{pointer-events:none} .box{position:fixed;display:none;border:3px solid #a78bfa;border-radius:6px;box-sizing:border-box;box-shadow:0 0 0 3px #ffffffa0} .label{position:fixed;top:16px;right:16px;max-width:360px;padding:12px 16px;border-radius:10px;background:#221538;color:white;font:14px/1.5 system-ui;box-shadow:0 4px 20px #0004}';
     box = document.createElement('div'); box.className = 'box';
     label = document.createElement('div'); label.className = 'label'; label.setAttribute('role', 'status');
     shadow.append(style, box, label);
@@ -92,7 +92,7 @@
   }
   let cursorStyle;
   function key(event) {
-    if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); deactivate(); feedback('Seleção cancelada.'); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); deactivate(); feedback('Seleção cancelada.'); chrome.runtime.sendMessage({type:'CLICKIMAGE_CANCELLED',token}).catch(()=>{}); }
   }
   async function click(event) {
     const target = candidate(event);
@@ -103,17 +103,19 @@
     resolving = true;
     feedback('Buscando a maior imagem disponível…');
     try {
+      await chrome.runtime.sendMessage({type:'CLICKIMAGE_RESOLVING',token:selectionToken});
       const url = await utils.resolveImage(target.el, document.baseURI, target.url);
-      if (!url) { feedback('Esta imagem não possui uma URL HTTP/HTTPS direta acessível.'); return; }
-      const result = await chrome.runtime.sendMessage({ type: 'CLICKIMAGE_DOWNLOAD', token: selectionToken, url });
-      feedback(result?.ok ? 'Download iniciado. Confira os downloads do Chrome.' : result?.error || 'Não foi possível baixar esta imagem.');
-    } catch { feedback('A extensão foi desconectada. Recarregue a página e tente novamente.'); }
+      if (!url) { await chrome.runtime.sendMessage({type:'CLICKIMAGE_CANCELLED',token:selectionToken}); feedback('Esta imagem não possui uma URL HTTP/HTTPS direta acessível.'); return; }
+      const result = await chrome.runtime.sendMessage({ type: 'CLICKIMAGE_PREVIEW', token: selectionToken, url, previewUrl: target.url, label: target.el.getAttribute('alt') || 'Imagem selecionada' });
+      feedback(result?.ok ? 'Imagem no painel ClickImage. Confirme em Baixar.' : result?.error || 'Não foi possível baixar esta imagem.');
+    } catch { chrome.runtime.sendMessage({type:'CLICKIMAGE_CANCELLED',token:selectionToken}).catch(()=>{}); feedback('A extensão foi desconectada. Recarregue a página e tente novamente.'); }
     finally { resolving = false; }
   }
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    if (message?.type === 'CLICKIMAGE_CANCEL') { deactivate(); feedback('Seleção cancelada.'); return; }
     if (message?.type === 'CLICKIMAGE_ACTIVATE' && typeof message.token === 'string') {
       if (resolving) { reply?.({ accepted: false }); feedback('Aguarde a busca da imagem selecionada.'); return; }
-      if (active) { reply?.({ accepted: false }); deactivate(); feedback('Seleção cancelada.'); return; }
+      if (active) { reply?.({ accepted: false }); deactivate(); feedback('Seleção cancelada.'); chrome.runtime.sendMessage({type:'CLICKIMAGE_CANCELLED',token}).catch(()=>{}); return; }
       token = message.token; active = true; ui(); clearTimeout(timer);
       label.textContent = 'ClickImage ativo · clique em uma imagem · ESC cancela';
       cursorStyle = document.createElement('style'); cursorStyle.textContent = '*{cursor:crosshair!important}'; document.documentElement.append(cursorStyle);
