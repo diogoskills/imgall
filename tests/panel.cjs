@@ -26,18 +26,28 @@ const path=require('node:path');const http=require('node:http');const fs=require
     if(message.type==='CLICKIMAGE_REMOVE')mockState.items=mockState.items.filter(image=>image.id!==message.itemId);
     if(message.type==='CLICKIMAGE_RENAME')item.title=message.title;
     if(message.type==='CLICKIMAGE_CONFIRM')item.status='downloading';
+    if(message.type==='CLICKIMAGE_CLEAR_ALL')mockState={status:'idle',items:[]};
+    if(message.type==='CLICKIMAGE_CONFIRM_ALL'){mockState.batch={running:true,total:mockState.items.length,finished:0,failed:0};mockState.items.forEach(image=>image.status='queued');}
     return {ok:true};
    }}};
    window.setPanelState=state=>{mockState=state;handlers.forEach(cb=>cb({['clickimage:'+mockTab]:{newValue:state}},'session'))};
   });
   await page.goto(base+'/panel.html');
   assert.equal(await page.evaluate(()=>commands.filter(m=>m.type==='CLICKIMAGE_SELECT').length),0);
+  const normalBackground=await page.locator('#select').evaluate(el=>getComputedStyle(el).backgroundImage);
   await page.locator('#select').click();
   await page.locator('#status-label').filter({hasText:'Clique em uma imagem'}).waitFor();
+  assert.equal(await page.locator('#select').getAttribute('aria-pressed'),'true');
+  assert.notEqual(await page.locator('#select').evaluate(el=>getComputedStyle(el).backgroundImage),normalBackground);
+  await page.locator('#select').click();
+  assert.equal(await page.locator('#select').getAttribute('aria-pressed'),'false');
+  assert.equal(await page.locator('#select').evaluate(el=>getComputedStyle(el).backgroundImage),normalBackground);
   const item={id:'first',url:base+'/icons/128.png',filename:'128.png',title:'',status:'ready'};
   await page.evaluate(item=>setPanelState({status:'idle',items:[item]}),item);
   await page.waitForFunction(()=>document.querySelector('.dimensions').textContent==='128 × 128 px');
   assert.equal(await page.locator('#select').isEnabled(),true);
+  assert.equal(await page.locator('.source').textContent(),'Imagem encontrada');
+  assert.equal(await page.locator('#download-all').isVisible(),false);
   assert.equal(await page.locator('.thumbnail').evaluate(el=>el.getBoundingClientRect().width),48);
   assert.equal(await page.evaluate(()=>commands.filter(m=>m.type==='CLICKIMAGE_CONFIRM').length),0);
   await page.locator('.title-input').fill('Minha imagem bonita');
@@ -50,6 +60,7 @@ const path=require('node:path');const http=require('node:http');const fs=require
   const items=Array.from({length:5},(_,i)=>({...item,id:'image-'+i,url:item.url+'?image='+i,title:'Fotografia '+(i+1)}));
   await page.evaluate(items=>setPanelState({status:'idle',items:items.slice(0,3)}),items);
   assert.equal(await page.locator('#image-list').evaluate(el=>el.classList.contains('has-scroll')),false);
+  assert.equal(await page.locator('#download-all').isVisible(),false);
   await page.evaluate(items=>setPanelState({status:'idle',items}),items);
   assert.equal(await page.locator('.image-card').count(),5);
   assert.equal(await page.locator('#count').textContent(),'5 imagens');
@@ -65,6 +76,15 @@ const path=require('node:path');const http=require('node:http');const fs=require
   await page.waitForFunction(()=>mockState.items[0].title==='Rascunho preservado');
   await page.screenshot({path:'/workspace/scratch/clickimage-gallery.png',fullPage:true});
   await page.locator('.remove').first().click();await page.waitForFunction(()=>document.querySelectorAll('.image-card').length===5);
+  assert.equal(await page.locator('#download-all').isVisible(),true);
+  await page.locator('#download-all').click();
+  await page.waitForFunction(()=>mockState.batch?.running===true);
+  assert.equal(await page.locator('#download-all').isEnabled(),false);
+  assert.equal(await page.evaluate(()=>commands.filter(m=>m.type==='CLICKIMAGE_CONFIRM_ALL').length),1);
+  await page.locator('#clear-all').click();
+  await page.locator('#empty').waitFor({state:'visible'});
+  assert.equal(await page.locator('.image-card').count(),0);
+  assert.equal(await page.locator('#download-all').isVisible(),false);
   await page.evaluate(item=>setPanelState({status:'idle',items:[{...item,id:'broken',url:item.url.replace('128.png','missing.png')}]}),item);
   await page.waitForFunction(()=>document.querySelector('.dimensions').textContent==='Prévia indisponível');
   assert.equal(await page.locator('.download').isEnabled(),true);
@@ -74,6 +94,6 @@ const path=require('node:path');const http=require('node:http');const fs=require
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   assert.equal(await page.locator('#select').evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight}),true);
   assert.deepEqual(errors,[]);
-  console.log('PASS: manual hunt; multiple previews; editable download titles; no automatic download; continued hunting; 4+ scroll; fixed panel height; draft preservation; per-image removal; preview failure; tab isolation; narrow layout. Chrome APIs mocked.');
+  console.log('PASS: manual hunt; multiple previews; editable download titles; no automatic download; continued hunting; vivid active button; trash clears collection; batch button at 4+; hidden CDN domains; 4+ scroll; fixed panel height; draft preservation; per-image removal; preview failure; tab isolation; narrow layout. Chrome APIs mocked.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(error=>{console.error(error);process.exitCode=1});

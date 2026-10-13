@@ -204,3 +204,48 @@ test('custom titles are safe, preserve accents, and follow actual image format',
  assert.ok(Array.from(u.safeTitle('😀'.repeat(100))).length<=60);
  assert.equal(u.downloadFilename('https://example.org/a.jpg',''),'a.jpg');
 });
+test('batch waits for each outcome, skips saved images, resumes after suspension and clear stops its queue',async()=>{
+ let listener,changed;const values={},calls=[];const noop={addListener:()=>{}};
+ const chrome={
+  storage:{session:{get:async key=>structuredClone(key===null?values:{[key]:values[key]}),set:async obj=>Object.assign(values,structuredClone(obj)),remove:async key=>delete values[key]}},
+  runtime:{id:'ext',getURL:file=>'chrome-extension://ext/'+file,onMessage:{addListener:cb=>listener=cb}},
+  action:{onClicked:noop},tabs:{sendMessage:async()=>{},onRemoved:noop},
+  downloads:{download:async options=>{calls.push(options);return calls.length},search:async({id})=>[{id,state:'in_progress'}],onChanged:{addListener:cb=>changed=cb},onDeterminingFilename:noop}
+ };
+ const load=()=>vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'),{chrome,importScripts:()=>{},ClickImageUtils:u});
+ load();const panel={id:'ext',url:'chrome-extension://ext/panel.html'};
+ const send=message=>new Promise(resolve=>listener({tabId:5,...message},panel,resolve));
+ const tick=()=>new Promise(resolve=>setImmediate(resolve));
+ const items=Array.from({length:5},(_,i)=>({id:'image-'+i,url:`https://example.org/${i}.jpg`,filename:i+'.jpg',title:'',status:i===0?'downloaded':'ready'}));
+ values['clickimage:5']={status:'idle',items};
+ const batch={type:'CLICKIMAGE_CONFIRM_ALL',titles:items.map(item=>({itemId:item.id,title:'Foto '+item.id}))};
+ const results=await Promise.all([send(batch),send(batch)]);await tick();
+ assert.equal(results.filter(r=>r.ok).length,1);assert.equal(calls.length,1);
+ assert.equal(calls[0].url,'https://example.org/1.jpg');
+ assert.equal(calls[0].filename,'Foto image-1.jpg');
+ const queued=values['clickimage:5'].items[2];
+ assert.equal(queued.status,'queued');
+ assert.equal((await send({type:'CLICKIMAGE_CONFIRM',itemId:queued.id})).ok,false);
+ await tick();assert.equal(calls.length,1); // No second file before completion.
+ changed({id:1,state:{current:'complete'}});await tick();
+ assert.equal(calls.length,2);assert.equal(calls[1].url,'https://example.org/2.jpg');
+ load(); // Next download can finish after the worker was suspended.
+ changed({id:2,state:{current:'interrupted'}});await tick();
+ assert.equal(calls.length,3);assert.equal(calls[2].url,'https://example.org/3.jpg');
+ changed({id:3,state:{current:'complete'}});await tick();
+ assert.equal(calls.length,4);
+ changed({id:4,state:{current:'complete'}});await tick();
+ assert.equal(values['clickimage:5'].batch.running,false);
+ assert.equal(values['clickimage:5'].batch.failed,1);
+ assert.equal(calls.filter(call=>call.url==='https://example.org/0.jpg').length,0);
+ // Explicit retry includes only the failed image, never the saved ones.
+ assert.equal((await send(batch)).ok,true);await tick();assert.equal(calls.length,5);
+ changed({id:5,state:{current:'complete'}});await tick();
+ assert.equal((await send(batch)).ok,false);assert.equal(calls.length,5);
+ values['clickimage:5']={status:'selecting',selectionToken:'hunt',items:items.map(item=>({...item,status:'ready'}))};
+ assert.equal((await send(batch)).ok,true);await tick();assert.equal(calls.length,6);
+ await send({type:'CLICKIMAGE_CLEAR_ALL'});
+ assert.equal(values['clickimage:5'].items.length,0);assert.equal(values['clickimage:5'].selectionToken,undefined);
+ changed({id:6,state:{current:'complete'}});await tick();
+ assert.equal(calls.length,6);assert.equal(values['clickimage:5'].items.length,0);
+});

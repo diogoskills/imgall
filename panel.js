@@ -1,9 +1,10 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let tabId=null,request=0;
+let tabId=null,request=0,collection={items:[]},batchRequest=false;
 const cards=new Map();
 function notice(text) { $('feedback').textContent=text||'';$('feedback').hidden=!text; }
 function render(value) {
+  collection=value;
   const items=value.items || (value.item?[value.item]:[]);
   $('count').textContent=`${items.length} ${items.length===1?'imagem':'imagens'}`;
   $('selected-total').textContent=String(items.length).padStart(2,'0');
@@ -16,6 +17,14 @@ function render(value) {
   if(value.status==='resolving'){$('empty-title').textContent='Procurando a melhor versão.';$('empty-description').textContent='Aguarde alguns segundos para conferir a prévia.'}
   $('select').disabled=!tabId;
   $('select').dataset.hunting=String(hunting);
+  $('select').setAttribute('aria-pressed',String(hunting));
+  $('clear-all').disabled=!items.length;
+  $('download-all').hidden=items.length<=3;
+  const batchRunning=!!value.batch?.running;
+  $('download-all').disabled=batchRequest || batchRunning || !items.some(item=>['ready','error'].includes(item.status));
+  $('download-all').querySelector('span').textContent=batchRunning?'Baixando em sequência…':'Baixar todas';
+  $('batch-progress').hidden=!value.batch;
+  $('batch-progress').textContent=value.batch ? (batchRunning?`${value.batch.finished} de ${value.batch.total} concluídas`:`Lote finalizado: ${value.batch.total-value.batch.failed} salvas${value.batch.failed?`, ${value.batch.failed} com erro`:''}`) : '';
   $('select').querySelector('span').textContent=hunting?'Parar seleção':'Caçar imagem';
   notice(value.error);
   for(const [id,card] of cards) if(!items.some(item=>item.id===id)){card.remove();cards.delete(id)}
@@ -42,13 +51,13 @@ function render(value) {
     }
     const input=card.querySelector('.title-input');
     if(document.activeElement!==input)input.value=item.title || item.filename.replace(/\.(jpe?g|png|webp|avif|gif|svg|bmp|tiff?|ico)$/i,'');
-    input.disabled=['downloading','downloaded'].includes(item.status);
-    card.querySelector('.source').textContent=new URL(item.url).hostname;
+    input.disabled=['queued','downloading','downloaded'].includes(item.status);
+    card.querySelector('.source').textContent='Imagem encontrada';
     const ready=['ready','error'].includes(item.status);
     card.querySelector('.download').disabled=!ready;
-    card.querySelector('.download').textContent=item.status==='downloading'?'Baixando…':item.status==='downloaded'?'Salva ✓':'Baixar imagem';
-    card.querySelector('.remove').disabled=item.status==='downloading';
-    card.querySelector('.item-status').textContent=item.status==='downloaded'?'Arquivo salvo':item.status==='downloading'?'Download solicitado':item.status==='error'?'Tente novamente':'Sem compressão extra';
+    card.querySelector('.download').textContent=item.status==='downloading'?'Baixando…':item.status==='downloaded'?'Salva ✓':item.status==='queued'?'Na fila':'Baixar imagem';
+    card.querySelector('.remove').disabled=['queued','downloading'].includes(item.status);
+    card.querySelector('.item-status').textContent=item.status==='downloaded'?'Arquivo salvo':item.status==='downloading'?'Download solicitado':item.status==='error'?'Tente novamente':item.status==='queued'?'Aguardando sua vez':'Sem compressão extra';
     card.querySelector('.item-error').hidden=!item.error;card.querySelector('.item-error').textContent=item.error || '';
   }
 }
@@ -72,6 +81,18 @@ async function command(type,extra={}){
   }catch{notice('Feche e abra o painel novamente.');return false}
 }
 $('select').addEventListener('click',()=>{const hunting=$('select').dataset.hunting==='true';$('select').disabled=true;command(hunting?'CLICKIMAGE_STOP':'CLICKIMAGE_SELECT')});
+$('clear-all').addEventListener('click',()=>{ $('clear-all').disabled=true;command('CLICKIMAGE_CLEAR_ALL'); });
+$('download-all').addEventListener('click',async()=>{
+  if(batchRequest || $('download-all').disabled)return;
+  const targetTab=tabId;
+  const titles=(collection.items||[]).filter(item=>['ready','error'].includes(item.status)).map(item=>({itemId:item.id,title:cards.get(item.id)?.querySelector('.title-input').value || ''}));
+  batchRequest=true;$('download-all').disabled=true;let error=null;
+  try{
+    const response=await chrome.runtime.sendMessage({type:'CLICKIMAGE_CONFIRM_ALL',tabId:targetTab,titles});
+    if(!response?.ok)error=response?.error || 'Não foi possível iniciar o lote.';
+  }catch{error='Não foi possível iniciar o lote.';}
+  finally{batchRequest=false;await refresh();if(error)notice(error);}
+});
 $('help').addEventListener('click',()=>{$('help-text').hidden=!$('help-text').hidden});
 chrome.storage.onChanged.addListener((changes,area)=>{if(area==='session' && tabId && changes[`clickimage:${tabId}`])render(changes[`clickimage:${tabId}`].newValue || {status:'idle',items:[]})});
 chrome.tabs.onActivated.addListener(refresh);

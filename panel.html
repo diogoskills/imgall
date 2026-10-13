@@ -2,14 +2,14 @@
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ClickImage</title><link rel="stylesheet" href="panel.css"><script src="image-utils.js" defer></script><script src="panel.js" defer></script></head>
 <body>
-  <header class="topbar"><div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5"/><path d="m7 16 4-4 3 3 3-5"/><circle cx="9" cy="9" r="1"/></svg></span><span>Click<span class="purple">Image</span><small>SEU OLHAR. SEU ARQUIVO.</small></span></div><span class="version">2.1</span></header>
+  <header class="topbar"><div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5"/><path d="m7 16 4-4 3 3 3-5"/><circle cx="9" cy="9" r="1"/></svg></span><span>Click<span class="purple">Image</span><small>SEU OLHAR. SEU ARQUIVO.</small></span></div><span class="version">2.2</span></header>
   <main>
     <div class="section-heading"><span class="eyebrow">BIBLIOTECA DA SESSÃO</span><span class="count" id="count">0 imagens</span></div>
     <div class="intro"><h1>Encontrou?<br><span>Guarde o original.</span></h1><p>Selecione na página. Confira aqui.<br>Baixe só quando quiser.</p></div>
     <div class="status-pill"><span class="dot" id="dot"></span><span id="status-label">Pronto para selecionar</span></div>
     <section id="empty" class="empty-state"><div class="orb" aria-hidden="true"><svg viewBox="0 0 64 64"><rect x="13" y="13" width="38" height="38" rx="10"/><path d="m19 42 10-11 7 7 9-13"/><circle cx="24" cy="24" r="3"/><path class="spark" d="M49 5v8m-4-4h8"/></svg></div><h2 id="empty-title">Sua próxima imagem<br>começa com um clique.</h2><p id="empty-description">Use “Caçar imagem” e clique<br>na foto que chamou sua atenção.</p><span class="key-hint"><kbd>ESC</kbd> cancela a seleção na página</span></section>
     <section id="selection" hidden aria-label="Imagens selecionadas">
-      <div class="card-heading"><span class="eyebrow">SUAS IMAGENS</span><span class="selected-tag" id="selected-total">00</span></div>
+      <div class="card-heading"><span class="eyebrow">SUAS IMAGENS</span><div class="collection-actions"><span class="selected-tag" id="selected-total">00</span><button id="clear-all" class="icon-button trash" aria-label="Limpar todas as imagens" title="Limpar todas as imagens"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h12M7 6V3h6v3M5 6l1 11h8l1-11M8 9v5m4-5v5"/></svg></button></div></div>
       <div id="image-list" tabindex="0" aria-label="Lista de imagens selecionadas"></div>
       <p class="preview-note">Edite o nome e baixe quando quiser. O arquivo mantém a qualidade encontrada no site.</p>
     </section>
@@ -19,5 +19,5 @@
     </article></template>
     <p id="feedback" class="feedback" role="status" aria-live="polite" hidden></p>
   </main>
-  <footer><button id="select" class="button secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 3 3 13 3-5 5-3Z"/></svg><span>Caçar imagem</span><span class="arrow" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m5 15 10-10M5 5h10v10"/></svg></span></button><div class="footer-note"><span class="privacy-dot"></span>Sem screenshots. Sem compressão extra.<button id="help" class="help" aria-label="Mostrar ajuda" title="Ajuda">?</button></div><p id="help-text" hidden>Clique no ícone ClickImage na aba do site para permitir a seleção. ESC ou Parar seleção encerram a caça. As imagens permanecem na lista. A prévia pode falhar se o site bloquear seu carregamento; o arquivo escolhido continua disponível para confirmação.</p></footer>
+  <footer><button id="download-all" class="button primary" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-4-4 4 4 4-4M4 13v4h12v-4"/></svg><span>Baixar todas</span></button><p id="batch-progress" class="batch-progress" role="status" hidden></p><button id="select" class="button secondary"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 3 3 13 3-5 5-3Z"/></svg><span>Caçar imagem</span><span class="arrow" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m5 15 10-10M5 5h10v10"/></svg></span></button><div class="footer-note"><span class="privacy-dot"></span>Sem screenshots. Sem compressão extra.<button id="help" class="help" aria-label="Mostrar ajuda" title="Ajuda">?</button></div><p id="help-text" hidden>Clique no ícone ClickImage na aba do site para permitir a seleção. ESC ou Parar seleção encerram a caça. As imagens permanecem na lista. A prévia pode falhar se o site bloquear seu carregamento; o arquivo escolhido continua disponível para confirmação.</p></footer>
 </body></html>

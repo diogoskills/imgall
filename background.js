@@ -59,17 +59,24 @@ async function finishDownload(id, outcome, entry) {
   if (!entry) return;
   const current = await state(entry.tabId);
   const item=current.items.find(image=>image.id===entry.itemId);
-  if (item) {
+  if (item && item.downloadId === id) {
     item.status=outcome==='complete'?'downloaded':'error';
     item.error=outcome==='complete'?null:'Download interrompido. Confira os downloads do Chrome ou tente novamente.';
     await save(entry.tabId,current);
   }
+  if (item?.downloadId === id && current.batch?.running && current.batch.activeId === entry.itemId) {
+    current.batch.activeId=null;
+    current.batch.finished++;
+    if (outcome !== 'complete') current.batch.failed++;
+    await save(entry.tabId,current);
+    scheduleBatch(entry.tabId);
+  }
   await chrome.storage.session.remove(downloadKey(id));
 }
-async function confirm(tabId, itemId) {
+async function confirm(tabId, itemId, fromBatch=false) {
   const current=await state(tabId);
   const item=current.items.find(image=>image.id===itemId);
-  if (!item || !['ready','error'].includes(item.status)) return {ok:false,error:'Esta imagem já foi solicitada ou não está disponível.'};
+  if (!item || !(fromBatch?['queued']:['ready','error']).includes(item.status)) return {ok:false,error:'Esta imagem já foi solicitada ou não está disponível.'};
   const url=ClickImageUtils.validateUrl(item.url);
   if (!url) return {ok:false,error:'URL inválida.'};
   item.status='downloading';item.error=null;
@@ -90,19 +97,62 @@ async function confirm(tabId, itemId) {
     await save(tabId,current);return {ok:false,error:item.error};
   }
 }
+function scheduleBatch(tabId) { locked(tabId,()=>advanceBatch(tabId)).catch(()=>{}); }
+async function advanceBatch(tabId) {
+  let current=await state(tabId);
+  if (!current.batch?.running || current.batch.activeId) return;
+  while (current.batch.remaining.length) {
+    const id=current.batch.remaining.shift();
+    const item=current.items.find(image=>image.id===id && image.status==='queued');
+    if (!item) continue;
+    current.batch.activeId=id;
+    await save(tabId,current);
+    const result=await confirm(tabId,id,true);
+    if (result.ok) return; // Next file starts after complete/interrupted.
+    current=await state(tabId);
+    current.batch.activeId=null;current.batch.finished++;current.batch.failed++;
+  }
+  current.batch.running=false;
+  await save(tabId,current);
+}
+async function startBatch(tabId, titles) {
+  const current=await state(tabId);
+  if (current.batch?.running) return {ok:false,error:'O download em lote já está em andamento.'};
+  if (current.items.length<=3) return {ok:false,error:'Baixar todas está disponível a partir de quatro imagens.'};
+  const candidates=current.items.filter(item=>['ready','error'].includes(item.status));
+  const seen=new Set();
+  const images=candidates.filter(item=>{if(seen.has(item.url))return false;seen.add(item.url);return true});
+  if (!images.length) return {ok:false,error:'Não há imagens pendentes para baixar.'};
+  if (!Array.isArray(titles)) return {ok:false,error:'Confira os nomes dos arquivos.'};
+  for (const item of images) {
+    const title=titles.find(value=>value?.itemId===item.id)?.title;
+    if (typeof title!=='string' || !ClickImageUtils.safeTitle(title)) return {ok:false,error:'Digite um nome válido para cada imagem.'};
+    item.title=ClickImageUtils.safeTitle(title);item.status='queued';item.error=null;
+  }
+  current.batch={running:true,remaining:images.map(item=>item.id),activeId:null,total:images.length,finished:0,failed:0};
+  await save(tabId,current);
+  scheduleBatch(tabId);
+  return {ok:true};
+}
 function panelSender(sender) { return sender.id===chrome.runtime.id && sender.url===chrome.runtime.getURL('panel.html') && !sender.tab; }
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   if (sender.id!==chrome.runtime.id || !message || typeof message.type!=='string') return;
   const isPanel=panelSender(sender),tabId=isPanel?message.tabId:sender.tab?.id;
   if (!Number.isInteger(tabId) || tabId<=0 || (!isPanel && sender.frameId!==0)) return;
-  const panelTypes=['CLICKIMAGE_STATE','CLICKIMAGE_SELECT','CLICKIMAGE_STOP','CLICKIMAGE_CONFIRM','CLICKIMAGE_REMOVE','CLICKIMAGE_RENAME'];
+  const panelTypes=['CLICKIMAGE_STATE','CLICKIMAGE_SELECT','CLICKIMAGE_STOP','CLICKIMAGE_CONFIRM','CLICKIMAGE_REMOVE','CLICKIMAGE_RENAME','CLICKIMAGE_CLEAR_ALL','CLICKIMAGE_CONFIRM_ALL'];
   const contentTypes=['CLICKIMAGE_PREVIEW','CLICKIMAGE_CANCELLED','CLICKIMAGE_RESOLVING'];
   if (!(isPanel?panelTypes:contentTypes).includes(message.type)) return;
   locked(tabId,async()=>{
     if (isPanel) {
       if (message.type==='CLICKIMAGE_SELECT') return activate(tabId);
       if (message.type==='CLICKIMAGE_CONFIRM') return confirm(tabId,message.itemId);
+      if (message.type==='CLICKIMAGE_CONFIRM_ALL') return startBatch(tabId,message.titles);
       const current=await state(tabId);
+      if (message.type==='CLICKIMAGE_CLEAR_ALL') {
+        await chrome.tabs.sendMessage(tabId,{type:'CLICKIMAGE_CANCEL'}).catch(()=>{});
+        await save(tabId,{status:'idle',items:[]});
+        return {ok:true};
+      }
       if (message.type==='CLICKIMAGE_STOP') {
         delete current.selectionToken;current.status='idle';current.error=null;
         await chrome.tabs.sendMessage(tabId,{type:'CLICKIMAGE_CANCEL'}).catch(()=>{});
@@ -113,10 +163,12 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
           const [download]=await chrome.downloads.search({id:item.downloadId});
           if (download && ['complete','interrupted'].includes(download.state)) await finishDownload(download.id,download.state);
         }
+        const latest=await state(tabId);
+        if (latest.batch?.running && !latest.batch.activeId) scheduleBatch(tabId);
         return {ok:true,state:await state(tabId)};
       }
       const item=current.items.find(image=>image.id===message.itemId);
-      if (!item || item.status==='downloading') return {ok:false,error:'Aguarde o download ou selecione uma imagem válida.'};
+      if (!item || ['downloading','queued'].includes(item.status)) return {ok:false,error:'Aguarde o download ou selecione uma imagem válida.'};
       if (message.type==='CLICKIMAGE_RENAME') {
         if (typeof message.title!=='string' || !ClickImageUtils.safeTitle(message.title)) return {ok:false,error:'Digite um nome válido para a imagem.'};
         item.title=ClickImageUtils.safeTitle(message.title);
