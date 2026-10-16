@@ -167,6 +167,24 @@ const assert = require('node:assert/strict');
       }
       await stale.close();
     }
+    const localized=await context.newPage();
+    await localized.addInitScript(()=>{
+      const attach=Element.prototype.attachShadow;
+      // Open only our UI shadow in this controlled fixture to inspect feedback.
+      Element.prototype.attachShadow=function(options){return attach.call(this,{...options,mode:'open'})};
+      window.localeHandlers=[];window.localeMessages=[];
+      window.chrome={storage:{local:{get:async()=>({clickimageLanguage:'es'})},onChanged:{addListener:fn=>localeHandlers.push(fn)}},runtime:{onMessage:{addListener:fn=>window.localeMessage=fn},sendMessage:async message=>{localeMessages.push(message);return {ok:true}}}};
+    });
+    await localized.goto(page.url());
+    for(const script of ['i18n.js','image-utils.js','content.js'])await localized.addScriptTag({path:path.join(root,script)});
+    await localized.evaluate(async()=>{await ClickImageI18n.ready;localeMessage({type:'CLICKIMAGE_ACTIVATE',token:'locale'})});
+    assert.equal(await localized.locator('.label').textContent(),'ClickImage activo · haz clic en una imagen · ESC cancela');
+    await localized.evaluate(()=>localeHandlers.forEach(fn=>fn({clickimageLanguage:{newValue:'en'}},'local')));
+    assert.equal(await localized.locator('.label').textContent(),'ClickImage active · click an image · ESC cancels');
+    await localized.keyboard.press('Escape');
+    assert.equal(await localized.locator('.label').textContent(),'Selection cancelled.');
+    assert.equal(await localized.evaluate(()=>localeMessages.filter(m=>m.type==='CLICKIMAGE_CANCELLED').length),1);
+    await localized.close();
     assert.deepEqual(errors,[]);
     console.log('PASS: real Chromium image decoding selects 128px originals over 48px previews, including a 24px CSS thumbnail, original link/attribute, inactive picture source, lazy srcset, inaccessible-original fallback and HTML-link rejection. ESC, one request, dynamic images, Shadow DOM, background and listener cleanup also passed. Chrome messaging is mocked; actual extension loading/download API not tested.');
   } finally {await context?.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(profile,{recursive:true,force:true});}

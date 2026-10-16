@@ -1,6 +1,9 @@
 'use strict';
-importScripts('image-utils.js','panel-actions.js');
+importScripts('i18n.js','image-utils.js','panel-actions.js');
 const locks = new Map();
+function localizeAction(){chrome.action.setTitle({title:globalThis.ClickImageI18n.t('ClickImage — selecionar imagem')}).catch(()=>{})}
+globalThis.ClickImageI18n?.onChange(localizeAction);
+globalThis.ClickImageI18n?.ready.then(localizeAction);
 const stateKey = id => `clickimage:${id}`;
 const downloadKey = id => `clickimage-download:${id}`;
 function locked(tabId, action) {
@@ -20,7 +23,7 @@ async function save(tabId, value) { await chrome.storage.session.set({ [stateKey
 function badge(tabId, text, title) {
   chrome.action.setBadgeBackgroundColor({tabId,color:'#8b5cf6'}).catch(()=>{});
   chrome.action.setBadgeText({tabId,text}).catch(()=>{});
-  chrome.action.setTitle({tabId,title}).catch(()=>{});
+  chrome.action.setTitle({tabId,title:globalThis.ClickImageI18n?.t(title) || title}).catch(()=>{});
 }
 const panelPorts=new Map();
 async function stopSelection(tabId,silent=false) {
@@ -71,7 +74,7 @@ async function activate(tabId) {
   const current = await state(tabId);
   if (['selecting','resolving'].includes(current.status)) return {ok:false,error:'A seleção já está ativa. ESC cancela.'};
   try {
-    await chrome.scripting.executeScript({target:{tabId},files:['image-utils.js','content.js']});
+    await chrome.scripting.executeScript({target:{tabId},files:['i18n.js','image-utils.js','content.js']});
     const token = crypto.randomUUID();
     const result = await chrome.tabs.sendMessage(tabId,{type:'CLICKIMAGE_ACTIVATE',token});
     if (result?.accepted === false) return {ok:false,error:'Aguarde a busca atual.'};

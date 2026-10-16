@@ -294,7 +294,7 @@
     if(bytes<1024)return bytes+" B";
     const unit=bytes<1048576?"KB":bytes<1073741824?"MB":"GB";
     const divisor=unit==="KB"?1024:unit==="MB"?1048576:1073741824;
-    return (bytes/divisor).toLocaleString("pt-BR",{maximumFractionDigits:1})+" "+unit;
+    return (bytes/divisor).toLocaleString(globalThis.ClickImageI18n?.language || "pt-BR",{maximumFractionDigits:1})+" "+unit;
   }
   function imageExtension(mime) {
     return ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg', 'image/bmp': 'bmp', 'image/x-ms-bmp': 'bmp', 'image/tiff': 'tif', 'image/x-icon': 'ico', 'image/vnd.microsoft.icon': 'ico' })[String(mime || '').split(';')[0].trim().toLowerCase()] || null;

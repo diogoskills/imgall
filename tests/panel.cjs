@@ -31,7 +31,7 @@ const path=require('node:path');const http=require('node:http');const fs=require
     if(message.type==='CLICKIMAGE_CONFIRM_ALL'){mockState.batch={running:true,total:mockState.items.length,finished:0,failed:0};mockState.items.forEach(image=>image.status='queued');}
     return {ok:true};
    }}};
-   window.localPreferences={clickimageLayout:'compact'};chrome.storage.local={get:async()=>localPreferences,set:async value=>Object.assign(localPreferences,value)};
+   window.localPreferences=JSON.parse(localStorage.getItem('clickimage-test-preferences') || '{"clickimageLayout":"compact"}');chrome.storage.local={get:async()=>localPreferences,set:async value=>{Object.assign(localPreferences,value);localStorage.setItem('clickimage-test-preferences',JSON.stringify(localPreferences))}};
    chrome.downloads={download:async options=>{window.archiveCalls=(window.archiveCalls||0)+1;window.archiveDownload=options;window.archiveBytes=Array.from(new Uint8Array(await (await fetch(options.url)).arrayBuffer()));return 101},search:async()=>[{id:101,state:window.archivePending?'in_progress':'complete'}],onChanged:{addListener:()=>{},removeListener:()=>{}}};
    window.setPanelState=state=>{mockState=state;handlers.forEach(cb=>cb({['clickimage:'+mockTab]:{newValue:state}},'session'))};
   });
@@ -183,6 +183,33 @@ const path=require('node:path');const http=require('node:http');const fs=require
   assert.equal(await page.locator('#select').getAttribute('aria-pressed'),'false');
   await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
   assert.equal(await page.locator('#select').getAttribute('aria-pressed'),'false');
+  // Locale changes preserve the collection and the draft in the focused input.
+  await page.evaluate(item=>setPanelState({status:'idle',items:[{...item,status:'ready',title:'Meu título original'}]}),item);
+  await page.locator('.title-input').fill('Rascunho de nome');
+  await page.evaluate(()=>ClickImageI18n.setLanguage('en'));
+  assert.equal(await page.locator('html').getAttribute('lang'),'en');
+  assert.equal(await page.locator('.title-input').inputValue(),'Rascunho de nome');
+  assert.equal(await page.locator('.source').textContent(),'Image found');
+  assert.equal(await page.locator('#count').textContent(),'1 image');
+  assert.equal(await page.locator('.download').textContent(),'Download image');
+  assert.equal(await page.locator('.open-image').getAttribute('aria-label'),'Open image');
+  assert.equal(await page.locator('#layout option[value="grid"]').textContent(),'Grid');
+  await page.locator('#language').selectOption('es');
+  assert.equal(await page.locator('.source').textContent(),'Imagen encontrada');
+  assert.equal(await page.locator('.download').textContent(),'Descargar imagen');
+  assert.equal(await page.locator('#layout option[value="grid"]').textContent(),'Cuadrícula');
+  assert.equal(await page.locator('#select span').first().textContent(),'Buscar imagen');
+  assert.equal(await page.locator('.donate').getAttribute('href'),'https://livepix.gg/zepoula');
+  assert.equal(await page.locator('.donate').getAttribute('target'),'_blank');
+  assert.match(await page.locator('.donate').getAttribute('rel'),/noopener/);
+  assert.equal(await page.locator('.donate').getAttribute('aria-label'),'Apoyar ClickImage (abre una pestaña nueva)');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.reload();
+  await page.waitForFunction(()=>document.documentElement.lang==='es');
+  assert.equal(await page.locator('#language').inputValue(),'es');
+  await page.locator('#language').selectOption('pt-BR');
+  assert.equal(await page.locator('#select span').first().textContent(),'Caçar imagem');
+  assert.equal(await page.locator('#layout option[value="grid"]').textContent(),'Grade');
   assert.deepEqual(errors,[]);
   console.log('PASS: manual hunt; multiple previews; editable download titles; no automatic download; continued hunting; vivid active button; trash clears collection; batch button at 4+; hidden CDN domains; 4+ scroll; fixed panel height; draft preservation; per-image removal; preview failure; tab isolation; narrow layout; 16px grid row spacing at 280/360/700px with new images and gallery open. Open original button, middle-click gallery, per-tab zoom request, legacy layout migration, individual/ZIP choice, duplicate ZIP guard and partial failures also passed. Copy URL, layout choices, reverse search URL and native WebP-to-PNG codec also passed; original remains available. Chrome APIs mocked.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve))}

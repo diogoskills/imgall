@@ -190,3 +190,13 @@ A preparação lê um arquivo por vez e mostra quantidade verificada, incluída 
 ### Checkpoint geral antes do backend
 
 A versão 2.6.0 está preservada na branch `checkpoint/pre-backend-v2.6.0` e na tag `checkpoint-pre-backend-v2.6.0`. Veja [CHECKPOINT.md](CHECKPOINT.md) para o inventário de funcionalidades, validação, limitações e instruções de retomada. As próximas alterações continuam em `work`; as integrações de backend aguardam as instruções do usuário.
+
+### Idiomas e apoio ao projeto (2.7)
+
+O seletor no rodapé oferece **Português (Brasil)**, **English** e **Español**. O padrão da interface é sempre português do Brasil, mesmo quando o Chrome usa outro idioma. A escolha é guardada em `chrome.storage.local` e aplicada ao painel, textos de acessibilidade, estados de download, erros conhecidos, progresso do ZIP e indicadores de seleção na página. Trocar o idioma não reinicia a seleção, não altera a coleção, os nomes digitados, arquivos ou URLs. A formatação dos tamanhos acompanha o idioma. Mensagens externas desconhecidas são preservadas em vez de ocultadas.
+
+As traduções são empacotadas em `i18n.js`, sem serviços remotos nem novas permissões. Os metadados nativos usam `_locales` e o fallback `pt_BR`; a descrição mostrada pelo gerenciador do Chrome segue o idioma do navegador, independentemente do seletor interno. Após atualizar a extensão, recarregue as abas já abertas para atualizar os scripts de seleção e seus textos.
+
+O botão **Donate** mantém o estilo dark/roxo e abre `https://livepix.gg/zepoula` em uma nova aba com `noopener noreferrer`. O link não interfere em downloads e não inicia pagamento automaticamente; a contribuição é feita pelo usuário no site externo. A integração Premium/Mercado Pago permanece fora desta alteração.
+
+`npm test` cobre fallback, persistência, mensagens parametrizadas e metadados nativos. `node tests/panel.cjs` verifica os três idiomas, preferência após recarregar, acessibilidade, preservação de nomes, layout estreito e destino da doação. `node tests/browser.cjs` verifica a troca de idioma do indicador na página e o cancelamento sem reinjeção; nesse cenário controlado, a shadow root da interface é aberta apenas pelo teste para inspecionar seu texto. As APIs Chrome continuam simuladas nesses testes.

@@ -4,6 +4,8 @@
   globalThis.__clickImageInstalled = true;
   const utils = globalThis.ClickImageUtils;
   let disconnected = false;
+  function setLabel(text){label._source=text;label.textContent=globalThis.ClickImageI18n?.t(text) || text}
+  globalThis.ClickImageI18n?.onChange(()=>{if(label?.isConnected && label._source)setLabel(label._source)});
   // Chrome can throw synchronously before returning a Promise after reload.
   // An async boundary makes both throws and Promise rejections catchable.
   async function sendMessage(message) {
@@ -36,7 +38,7 @@
     document.documentElement.append(host);
   }
   function feedback(text) {
-    ui(); clearTimeout(timer); label.textContent = text;
+    ui(); clearTimeout(timer); setLabel(text);
     timer = setTimeout(() => { if (!active && !resolving) host?.remove(); }, 4500);
   }
   function candidate(event) {
@@ -168,7 +170,7 @@
       if (resolving) { reply?.({ accepted: false }); feedback('Aguarde a busca da imagem selecionada.'); return; }
       if (active) { reply?.({ accepted: false }); deactivate(); feedback('Seleção cancelada.'); void notifyCancellation(token); return; }
       token = message.token; active = true; silentStopped=false; ui(); clearTimeout(timer);
-      label.textContent = 'ClickImage ativo · clique em uma imagem · ESC cancela';
+      setLabel('ClickImage ativo · clique em uma imagem · ESC cancela');
       cursorStyle = document.createElement('style'); cursorStyle.textContent = '*{cursor:crosshair!important}'; document.documentElement.append(cursorStyle);
       window.addEventListener('pointermove', move, true);
       window.addEventListener('click', click, true);
