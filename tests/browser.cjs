@@ -9,20 +9,20 @@ const assert = require('node:assert/strict');
   const server = http.createServer((req,res) => {
     const file = path.resolve(root, '.' + new URL(req.url, 'http://localhost').pathname);
     if (!file.startsWith(root + path.sep)) {res.writeHead(403).end();return;}
-    fs.readFile(file,(error,data)=>{if(error){res.writeHead(404).end();return;}res.setHeader('Content-Type',file.endsWith('.png')?'image/png':'text/html');res.end(data)});
+    fs.readFile(file,(error,data)=>{if(error){res.writeHead(404).end();return;}res.setHeader('Content-Type',file.endsWith('.png')?'image/png':'text/html');if(req.url.includes('slow=1'))setTimeout(()=>res.end(data),300);else res.end(data)});
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const profile = fs.mkdtempSync('/tmp/clickimage-browser-');
   let context;
   try {
-    context = await chromium.launchPersistentContext(profile, {executablePath:process.env.CHROMIUM_PATH || '/usr/lib/chromium/chromium',headless:true,ignoreDefaultArgs:["--disable-extensions"],acceptDownloads:true,args:["--disable-features=DisableLoadExtensionCommandLineSwitch",`--disable-extensions-except=${root}`,`--load-extension=${root}`]});
+    context = await chromium.launchPersistentContext(profile, {executablePath:process.env.CHROMIUM_PATH || '/usr/lib/chromium/chromium',headless:true});
 
     const page=await context.newPage();
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(`http://127.0.0.1:${server.address().port}/tests/manual.html`);
     await page.evaluate(() => {
       window.ciMessages = []; window.ciListeners = [];
-      window.chrome = {runtime:{onMessage:{addListener:cb=>ciListeners.push(cb)},sendMessage:async msg=>{ciMessages.push(msg);return {ok:true}}}};
+      window.chrome = {runtime:{onMessage:{addListener:cb=>ciListeners.push(cb)},sendMessage:async msg=>{if(msg.type==='CLICKIMAGE_PREVIEW')ciMessages.push(msg);return {ok:true}}}};
     });
     await page.addScriptTag({path:path.join(root,'image-utils.js')});
     await page.addScriptTag({path:path.join(root,'content.js')});
@@ -38,19 +38,24 @@ const assert = require('node:assert/strict');
     await activate('download');
     await page.locator('#link img').hover();
     await page.locator('#link img').click();
-    assert.equal(await page.evaluate(()=>ciMessages.length),1);
+    await page.waitForFunction(expected => ciMessages.length === expected,1);
     assert.match(await page.evaluate(()=>ciMessages[0].url), /icons\/128.png\?link=1$/);
-    assert.equal(new URL(page.url()).hash,'');assert.notEqual(await cursor(),'crosshair');
+    assert.equal(new URL(page.url()).hash,'');assert.equal(await cursor(),'crosshair');
+    await page.keyboard.press('Escape');assert.notEqual(await cursor(),'crosshair');
     await page.locator('#link img').click();assert.equal(new URL(page.url()).hash,'#navegou');
     await activate('dynamic');await page.locator('#add').click();
     await page.locator('img[alt="Dinâmica"]').click();
-    assert.equal(await page.evaluate(()=>ciMessages.length),2);
+    await page.waitForFunction(expected => ciMessages.length === expected,2);
+    await page.keyboard.press('Escape');
     await activate('shadow');await page.locator('#shadow img').click();
-    assert.equal(await page.evaluate(()=>ciMessages.length),3);
+    await page.waitForFunction(expected => ciMessages.length === expected,3);
+    await page.keyboard.press('Escape');
     await activate('background');await page.locator('.background').click();
-    assert.equal(await page.evaluate(()=>ciMessages.length),4);
+    await page.waitForFunction(expected => ciMessages.length === expected,4);
+    await page.keyboard.press('Escape');
     await activate('unsupported');await page.locator('img[alt="Data não suportada"]').click();
-    assert.equal(await page.evaluate(()=>ciMessages.length),4);
+    await page.waitForFunction(expected => ciMessages.length === expected,4);
+    await page.waitForTimeout(100);
     assert.notEqual(await cursor(),'crosshair');
     // Explicit listener accounting catches leaked selection handlers.
     await page.evaluate(()=>{
@@ -61,7 +66,126 @@ const assert = require('node:assert/strict');
     });
     await activate('cleanup');assert.equal(await page.evaluate(()=>ciTracked.size),5);
     await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>ciTracked.size),0);
+    async function selectOriginal(alt, expected) {
+      const count=await page.evaluate(()=>ciMessages.length);
+      await activate(alt);
+      await page.locator(`img[alt="${alt}"]`).click();
+      await page.waitForFunction(count=>ciMessages.length===count+1,count);
+      assert.match(await page.evaluate(()=>ciMessages.at(-1).url),expected);
+      assert.equal(await cursor(),'crosshair');
+      await page.keyboard.press('Escape');
+      assert.notEqual(await cursor(),'crosshair');
+      assert.equal(await page.evaluate(()=>ciTracked.size),0);
+    }
+    await selectOriginal('HTML do container', /128.png\?wrapper=exact$/);
+    await selectOriginal('Galeria imagem um', /48.png$/);
+    await selectOriginal('Original no link', /128.png\?original=link$/);
+    await selectOriginal('Original no atributo', /128.png\?original=data$/);
+    await selectOriginal('Original indisponível', /128.png\?fallback=1$/);
+    await selectOriginal('Picture de alta resolução', /128.png\?picture=large$/);
+    await selectOriginal('Link HTML ignorado', /128.png\?html-fallback=1$/);
+    const count = await page.evaluate(()=>ciMessages.length);
+    await page.locator('img[alt="Original no atributo"]').evaluate(el=>el.setAttribute('data-original','../icons/128.png?slow=1'));
+    await activate('slow-original');
+    await page.locator('img[alt="Original no atributo"]').click();
+    const accepted = await page.evaluate(()=>{
+      let result;
+      ciListeners[0]({type:'CLICKIMAGE_ACTIVATE',token:'should-not-replace'},null,reply=>result=reply);
+      return result.accepted;
+    });
+    assert.equal(accepted,false);
+    await page.waitForFunction(count=>ciMessages.length===count+1,count);
+    assert.equal(await page.evaluate(()=>ciMessages.at(-1).token),'slow-original');
+    assert.match(await page.evaluate(()=>ciMessages.at(-1).url), /128.png\?slow=1$/);
+    await page.keyboard.press('Escape');
+    const overlayCount = await page.evaluate(()=>ciMessages.length);
+    await activate('instagram-overlay');
+    await page.locator('#photo-overlay').hover();
+    await page.locator('#photo-overlay').click();
+    await page.waitForFunction(count=>ciMessages.length===count+1,overlayCount);
+    const overlayUrl = new URL(await page.evaluate(()=>ciMessages.at(-1).url));
+    assert.equal(overlayUrl.searchParams.get('stp'),'dst-jpg_e35_tt6');
+    assert.equal(overlayUrl.searchParams.get('oh'),'signed-value');
+    assert.equal(overlayUrl.searchParams.get('oe'),'6AD34BE4');
+    assert.equal(await page.evaluate(()=>ciTracked.size),5);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.evaluate(()=>ciTracked.size),0);
+    await page.evaluate(()=>{
+      document.querySelector('#photo-overlay').style.background='white';
+      window.overlayClicks=0;
+      document.querySelector('#photo-overlay').addEventListener('click',()=>overlayClicks++);
+    });
+    await activate('opaque-overlay');await page.locator('#photo-overlay').click();
+    assert.equal(await page.evaluate(()=>ciMessages.length),overlayCount+1);
+    assert.equal(await page.evaluate(()=>overlayClicks),1);
+    await page.keyboard.press('Escape');
+    const continuousCount=await page.evaluate(()=>ciMessages.length);
+    await activate('continuous-hunt');
+    await page.locator('img[alt="Galeria imagem um"]').click();
+    await page.waitForFunction(count=>ciMessages.length===count+1,continuousCount);
+    await page.locator('img[alt="Original no link"]').click();
+    await page.waitForFunction(count=>ciMessages.length===count+2,continuousCount);
+    assert.equal(await page.evaluate(()=>ciMessages.at(-2).token),'continuous-hunt');
+    assert.equal(await page.evaluate(()=>ciMessages.at(-1).token),'continuous-hunt');
+    assert.equal(await cursor(),'crosshair');
+    await page.keyboard.press('Escape');
+    assert.notEqual(await cursor(),'crosshair');
+    await activate('close-panel');
+    await page.evaluate(()=>ciListeners[0]({type:'CLICKIMAGE_CANCEL',silent:true}));
+    assert.notEqual(await cursor(),'crosshair');
+    assert.equal(await page.evaluate(()=>ciTracked.size),0);
+    assert.equal(await page.locator('html > div').count(),0);
+    // Reproduce Chrome invalidation both before and after sendMessage returns.
+    for (const mode of ['sync-click','async-click','sync-preview','sync-escape','async-escape','cleanup-throw']) {
+      const stale=await context.newPage();const staleErrors=[];
+      stale.on('pageerror',error=>staleErrors.push(error.message));
+      await stale.goto(page.url());
+      await stale.evaluate(mode=>{
+        window.staleListeners=[];window.sendCalls=0;window.failureMode=mode;
+        window.chrome={runtime:{onMessage:{addListener:cb=>staleListeners.push(cb)},sendMessage:message=>{
+          sendCalls++;
+          if(failureMode==='sync-preview' && message.type==='CLICKIMAGE_RESOLVING')return Promise.resolve({ok:true});
+          const error=new Error(failureMode==='cleanup-throw'?'Receiving end does not exist.':'Extension context invalidated.');
+          if(failureMode.startsWith('async'))return Promise.reject(error);
+          throw error;
+        }}};
+      },mode);
+      await stale.addScriptTag({path:path.join(root,'image-utils.js')});
+      await stale.addScriptTag({path:path.join(root,'content.js')});
+      await stale.evaluate(()=>{
+        ClickImageUtils.resolveImage=async()=>document.querySelector('img').src;
+        staleListeners[0]({type:'CLICKIMAGE_ACTIVATE',token:'stale-test'});
+      });
+      if(mode.endsWith('escape'))await stale.keyboard.press('Escape');
+      else await stale.locator('body > img').first().click();
+      await stale.waitForFunction(()=>getComputedStyle(document.querySelector('img')).cursor!=='crosshair');
+      assert.deepEqual(staleErrors,[],mode);
+      assert.equal(await stale.evaluate(()=>sendCalls),mode==='sync-preview'||mode==='cleanup-throw'?2:1,mode);
+      if(mode!=='cleanup-throw'){
+        const accepted=await stale.evaluate(()=>{let result;staleListeners[0]({type:'CLICKIMAGE_ACTIVATE',token:'again'},null,value=>result=value);return result?.accepted});
+        assert.equal(accepted,false,mode);
+      }
+      await stale.close();
+    }
+    const localized=await context.newPage();
+    await localized.addInitScript(()=>{
+      const attach=Element.prototype.attachShadow;
+      // Open only our UI shadow in this controlled fixture to inspect feedback.
+      Element.prototype.attachShadow=function(options){return attach.call(this,{...options,mode:'open'})};
+      window.localeHandlers=[];window.localeMessages=[];
+      window.chrome={storage:{local:{get:async()=>({clickimageLanguage:'es'})},onChanged:{addListener:fn=>localeHandlers.push(fn)}},runtime:{onMessage:{addListener:fn=>window.localeMessage=fn},sendMessage:async message=>{localeMessages.push(message);return {ok:true}}}};
+    });
+    await localized.goto(page.url());
+    for(const script of ['i18n.js','image-utils.js','content.js'])await localized.addScriptTag({path:path.join(root,script)});
+    await localized.evaluate(async()=>{await ClickImageI18n.ready;localeMessage({type:'CLICKIMAGE_ACTIVATE',token:'locale'})});
+    assert.equal(await localized.locator('.label').textContent(),'ClickImage activo · haz clic en una imagen · ESC cancela');
+    await localized.evaluate(()=>localeHandlers.forEach(fn=>fn({clickimageLanguage:{newValue:'en'}},'local')));
+    assert.equal(await localized.locator('.label').textContent(),'ClickImage active · click an image · ESC cancels');
+    await localized.keyboard.press('Escape');
+    assert.equal(await localized.locator('.label').textContent(),'Selection cancelled.');
+    assert.equal(await localized.evaluate(()=>localeMessages.filter(m=>m.type==='CLICKIMAGE_CANCELLED').length),1);
+    await localized.close();
     assert.deepEqual(errors,[]);
-    console.log('PASS: selector in real Chromium with mocked extension messaging: ESC; inactive buttons/links; one linked-image request; dynamic image; open Shadow DOM; background; unsupported URL; reinjection; listener/cursor cleanup; no page errors. Actual extension loading/download API not tested.');
+    console.log('PASS: real Chromium image decoding selects 128px originals over 48px previews, including a 24px CSS thumbnail, original link/attribute, inactive picture source, lazy srcset, inaccessible-original fallback and HTML-link rejection. ESC, one request, dynamic images, Shadow DOM, background and listener cleanup also passed. Chrome messaging is mocked; actual extension loading/download API not tested.');
   } finally {await context?.close();await new Promise(resolve=>server.close(resolve));fs.rmSync(profile,{recursive:true,force:true});}
 })().catch(error=>{console.error(error);process.exitCode=1});

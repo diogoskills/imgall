@@ -3,35 +3,121 @@
   if (globalThis.__clickImageInstalled) return;
   globalThis.__clickImageInstalled = true;
   const utils = globalThis.ClickImageUtils;
-  let active = false, token = '', host, box, label, selected, timer;
+  let disconnected = false;
+  function setLabel(text){label._source=text;label.textContent=globalThis.ClickImageI18n?.t(text) || text}
+  globalThis.ClickImageI18n?.onChange(()=>{if(label?.isConnected && label._source)setLabel(label._source)});
+  // Chrome can throw synchronously before returning a Promise after reload.
+  // An async boundary makes both throws and Promise rejections catchable.
+  async function sendMessage(message) {
+    if (disconnected) throw new Error('Extension context invalidated.');
+    try { return await chrome.runtime.sendMessage(message); }
+    catch (error) {
+      if (/extension context invalidated/i.test(error?.message || '')) {
+        disconnected = true;
+        deactivate();
+      }
+      throw error;
+    }
+  }
+  async function notifyCancellation(selectionToken) {
+    if (disconnected) return;
+    try { await sendMessage({type:'CLICKIMAGE_CANCELLED',token:selectionToken}); }
+    catch { /* A disconnected context cannot notify the replacement worker. */ }
+  }
+  let active = false, resolving = false, silentStopped=false, token = '', host, box, label, selected, timer;
   function ui() {
     if (host?.isConnected) return;
     host = document.createElement('div');
     host.style.cssText = 'all:initial!important;position:fixed!important;inset:0!important;pointer-events:none!important;z-index:2147483647!important';
     const shadow = host.attachShadow({ mode: 'closed' });
     const style = document.createElement('style');
-    style.textContent = ':host{pointer-events:none} .box{position:fixed;display:none;border:3px solid #2563eb;border-radius:6px;box-sizing:border-box;box-shadow:0 0 0 3px #ffffffa0} .label{position:fixed;top:16px;right:16px;max-width:360px;padding:12px 16px;border-radius:10px;background:#172554;color:white;font:14px/1.5 system-ui;box-shadow:0 4px 20px #0004}';
+    style.textContent = ':host{pointer-events:none} .box{position:fixed;display:none;border:3px solid #a78bfa;border-radius:6px;box-sizing:border-box;box-shadow:0 0 0 3px #ffffffa0} .label{position:fixed;top:16px;right:16px;max-width:360px;padding:12px 16px;border-radius:10px;background:#221538;color:white;font:14px/1.5 system-ui;box-shadow:0 4px 20px #0004}';
     box = document.createElement('div'); box.className = 'box';
     label = document.createElement('div'); label.className = 'label'; label.setAttribute('role', 'status');
     shadow.append(style, box, label);
     document.documentElement.append(host);
   }
   function feedback(text) {
-    ui(); clearTimeout(timer); label.textContent = text;
-    timer = setTimeout(() => { if (!active) host?.remove(); }, 4500);
+    ui(); clearTimeout(timer); setLabel(text);
+    timer = setTimeout(() => { if (!active && !resolving) host?.remove(); }, 4500);
   }
   function candidate(event) {
-    for (const el of event.composedPath()) {
-      if (!(el instanceof Element) || el === host) continue;
+    const path = event.composedPath();
+    const pointed=path[0];
+    // Leave native controls functional even when their icon is an IMG.
+    if (path.some(el=>el instanceof Element && el.matches('button, input, select, textarea'))) return null;
+    if (pointed instanceof Element) {
+      const youtube=utils.youtubeContext(pointed,document.baseURI,pointed.currentSrc || pointed.src);
+      if (youtube) { const el=youtube.scope;return {el:pointed,url:utils.validateUrl(pointed.currentSrc || pointed.src,document.baseURI),rect:el.getBoundingClientRect()}; }
+    }
+    const atPoint = document.elementsFromPoint(event.clientX, event.clientY);
+    function inspect(el, imagesOnly = false) {
+      if (!(el instanceof Element) || el === host) return null;
       const rect = el.getBoundingClientRect();
-      if (rect.width < 32 || rect.height < 32 || el.getAttribute('role') === 'presentation' || el.getAttribute('aria-hidden') === 'true') continue;
-      if (el.tagName === 'IMG') return { el, url: utils.imageUrl(el, document.baseURI), rect };
-      const css = getComputedStyle(el).backgroundImage;
+      if (rect.width <= 0 || rect.height <= 0 || !visibleAtPoint(el, event.clientX, event.clientY)) return null;
+      const style = getComputedStyle(el);
+      if (el.tagName === 'IMG') return { el, url: utils.validateUrl(el.currentSrc || el.src, document.baseURI), rect };
+      if (imagesOnly) return null;
+      // Posters are static resources; never capture video frames or video src.
+      if (el.tagName === 'VIDEO' && el.poster) return {el,url:utils.validateUrl(el.poster,document.baseURI),rect};
+      const css = style.backgroundImage;
       if (css !== 'none' && utils.backgroundUrl(css, document.baseURI)) return { el, url: utils.backgroundUrl(css, document.baseURI), rect };
+      return null;
+    }
+    for (const el of path) {
+      const image = inspect(el, true);
+      if (image) return image;
+    }
+    // Hit-test like an element inspector: Instagram often targets a transparent
+    // sibling overlay, so the IMG never appears in the event's composed path.
+    for (const el of atPoint) {
+      const youtube=utils.youtubeContext(el,document.baseURI,el.currentSrc || el.src);
+      if(youtube) return {el,url:utils.validateUrl(el.currentSrc || el.src,document.baseURI),rect:youtube.scope.getBoundingClientRect()};
+      const image = inspect(el, true);
+      if (image) return image;
+      if (el === host) continue;
+      const style = getComputedStyle(el);
+      // Also handles IMG elements with pointer-events:none, absent from the
+      // hit-test stack. Search only local containers intersecting the pointer.
+      if (!['BODY', 'HTML'].includes(el.tagName)) {
+        const images = [...el.querySelectorAll('img')].slice(0, 100).reverse();
+        for (const child of images) {
+          const rect = child.getBoundingClientRect();
+          if (event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom) continue;
+          const image = inspect(child, true);
+          if (image) return image;
+        }
+      }
+      // A container's background is painted below its image descendants.
+      const background = inspect(el);
+      if (background) return background;
+      if (Number(style.opacity) > 0 && /^rgb\(/.test(style.backgroundColor)) break;
+    }
+    for (const el of path) {
+      const background = inspect(el);
+      if (background) return background;
     }
     return null;
   }
+  function visibleAtPoint(element, x, y) {
+    const rect = element.getBoundingClientRect();
+    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) return false;
+    // Bounding boxes include offscreen carousel slides and clipped descendants.
+    // Walk actual ancestors (including open shadow hosts) to respect visibility
+    // and overflow instead of selecting a resource that is not painted here.
+    for (let parent = element; parent; parent = parent.parentElement || parent.getRootNode()?.host) {
+      const style = getComputedStyle(parent);
+      if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0) return false;
+      if (parent === element) continue;
+      const bounds = parent.getBoundingClientRect();
+      const clipX = /^(hidden|clip|scroll|auto)$/.test(style.overflowX);
+      const clipY = /^(hidden|clip|scroll|auto)$/.test(style.overflowY);
+      if ((clipX && (x < bounds.left || x >= bounds.right)) || (clipY && (y < bounds.top || y >= bounds.bottom))) return false;
+    }
+    return true;
+  }
   function move(event) {
+    if (resolving) return;
     selected = candidate(event);
     if (!selected) { box.style.display = 'none'; return; }
     const r = selected.rect;
@@ -50,32 +136,48 @@
   }
   let cursorStyle;
   function key(event) {
-    if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); deactivate(); feedback('Seleção cancelada.'); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); deactivate(); feedback('Seleção cancelada.'); void notifyCancellation(token); }
   }
   async function click(event) {
     const target = candidate(event);
     if (!target) return;
     event.preventDefault(); event.stopImmediatePropagation();
+    if (resolving) return;
     const selectionToken = token;
-    deactivate();
-    if (!target.url) { feedback('Esta imagem não possui uma URL HTTP/HTTPS direta.'); return; }
-    feedback('Solicitando download…');
+    clearHighlight();
+    resolving = true;
+    feedback('Buscando a maior imagem disponível…');
     try {
-      const result = await chrome.runtime.sendMessage({ type: 'CLICKIMAGE_DOWNLOAD', token: selectionToken, url: target.url });
-      feedback(result?.ok ? 'Download iniciado. Confira os downloads do Chrome.' : result?.error || 'Não foi possível baixar esta imagem.');
-    } catch { feedback('A extensão foi desconectada. Recarregue a página e tente novamente.'); }
+      await sendMessage({type:'CLICKIMAGE_RESOLVING',token:selectionToken});
+      const url = await utils.resolveImage(target.el, document.baseURI, target.url);
+      if (!active || token !== selectionToken) return;
+      if (!url) { deactivate(); await notifyCancellation(selectionToken); feedback('Esta imagem não possui uma URL HTTP/HTTPS direta acessível.'); return; }
+      const {format,sizeBytes}=await utils.inspectImageResource(url);
+      if (!active || token!==selectionToken) return;
+      if(format==='GIF' && utils.youtubeContext(target.el,document.baseURI,target.url)) {
+        deactivate();await notifyCancellation(selectionToken);feedback('A thumbnail estática não está disponível. A prévia animada não será baixada.');return;
+      }
+      const result = await sendMessage({ type: 'CLICKIMAGE_PREVIEW', token: selectionToken, url, format, sizeBytes, previewUrl: target.url, label: target.el.getAttribute('alt') || 'Imagem selecionada' });
+      if (!active || token!==selectionToken) return;
+      feedback(result?.ok ? 'Imagem no painel. Continue selecionando · ESC encerra.' : result?.error || 'Não foi possível guardar esta imagem.');
+    } catch { deactivate(); await notifyCancellation(selectionToken); if(!silentStopped)feedback('A extensão foi desconectada. Recarregue a página e tente novamente.'); }
+    finally { resolving = false; }
   }
-  chrome.runtime.onMessage.addListener(message => {
+  chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    if (message?.type === 'CLICKIMAGE_CANCEL') { deactivate(); if(message.silent){silentStopped=true;clearTimeout(timer);host?.remove();}else feedback('Seleção cancelada.'); return; }
     if (message?.type === 'CLICKIMAGE_ACTIVATE' && typeof message.token === 'string') {
-      if (active) { deactivate(); feedback('Seleção cancelada.'); return; }
-      token = message.token; active = true; ui(); clearTimeout(timer);
-      label.textContent = 'ClickImage ativo · clique em uma imagem · ESC cancela';
+      if (disconnected) { reply?.({accepted:false}); feedback('A extensão foi atualizada. Recarregue a página.'); return; }
+      if (resolving) { reply?.({ accepted: false }); feedback('Aguarde a busca da imagem selecionada.'); return; }
+      if (active) { reply?.({ accepted: false }); deactivate(); feedback('Seleção cancelada.'); void notifyCancellation(token); return; }
+      token = message.token; active = true; silentStopped=false; ui(); clearTimeout(timer);
+      setLabel('ClickImage ativo · clique em uma imagem · ESC cancela');
       cursorStyle = document.createElement('style'); cursorStyle.textContent = '*{cursor:crosshair!important}'; document.documentElement.append(cursorStyle);
       window.addEventListener('pointermove', move, true);
       window.addEventListener('click', click, true);
       window.addEventListener('keydown', key, true);
       window.addEventListener('scroll', clearHighlight, true);
       window.addEventListener('resize', clearHighlight, true);
+      reply?.({ accepted: true });
     } else if (message?.type === 'CLICKIMAGE_ERROR') feedback(message.error);
   });
 })();
