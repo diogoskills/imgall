@@ -30,17 +30,17 @@ const {chromium}=require('playwright');const assert=require('node:assert/strict'
    await page.evaluate(()=>{window.messages=[];window.listeners=[];window.chrome={runtime:{onMessage:{addListener:cb=>listeners.push(cb)},sendMessage:async message=>{messages.push(message);return {ok:true}}}}});
    await page.addScriptTag({path:path.join(root,'image-utils.js')});await page.addScriptTag({path:path.join(root,'content.js')});
    await page.evaluate(()=>listeners[0]({type:'CLICKIMAGE_ACTIVATE',token:'social'}));
-   await page.locator('#overlay').hover();await page.locator('#overlay').click();
+   await page.locator('#overlay').hover({force:true});await page.locator('#overlay').click({force:true});
    await page.waitForFunction(()=>messages.some(message=>message.type==='CLICKIMAGE_PREVIEW'));
    const selected=await page.evaluate(()=>messages.find(message=>message.type==='CLICKIMAGE_PREVIEW'));
    assert.equal(selected.url,fixture.large);assert.equal(selected.format,'PNG',fixture.site+' '+consoleErrors.join('\n'));assert.ok(selected.sizeBytes>0);
-   // Controls with image icons must remain usable while hunting.
+   // Controls with image icons must be blocked while hunting, without selecting them.
    await page.evaluate(url=>{
     window.controlClicks=0;
     const button=document.createElement('button');button.id='control';button.innerHTML=`<img src="${url}" width="40" height="40">`;button.onclick=()=>controlClicks++;document.body.append(button);
    },fixture.small);
-   await page.locator('#control img').click();
-   assert.equal(await page.evaluate(()=>controlClicks),1);
+   await page.locator('#control img').click({force:true});
+   assert.equal(await page.evaluate(()=>controlClicks),0);
    assert.equal(await page.evaluate(()=>messages.filter(m=>m.type==='CLICKIMAGE_PREVIEW').length),1);
    // A hidden carousel slide overlaps the pointer's bounding box but is
    // outside its parent's overflow clip. It must not replace the visible IMG.
@@ -49,16 +49,16 @@ const {chromium}=require('playwright');const assert=require('node:assert/strict'
      const clipped=document.createElement('div');clipped.style.cssText='position:absolute;left:250px;top:0;width:20px;height:150px;overflow:hidden;pointer-events:none';
      clipped.innerHTML=`<img alt="Clipped slide" src="${url}" style="position:absolute;left:-250px;width:200px;height:150px;pointer-events:none">`;document.querySelector('figure').append(clipped);
     },fixture.small);
-    await page.locator('#overlay').click();
+    await page.locator('#overlay').click({force:true});
     await page.waitForFunction(()=>messages.filter(m=>m.type==='CLICKIMAGE_PREVIEW').length===2);
     const afterClip=await page.evaluate(()=>messages.filter(m=>m.type==='CLICKIMAGE_PREVIEW').at(-1));
     assert.equal(afterClip.label,'Social photo',JSON.stringify(afterClip));
     assert.equal(afterClip.url,fixture.large);
    }
-   // Solid overlays must not intercept navigation as image selections.
+   // Solid overlays are not images and their page actions are blocked while hunting.
    const count=await page.evaluate(()=>messages.length);
    await page.evaluate(()=>{window.overlayClicks=0;const overlay=document.querySelector('#overlay');overlay.style.background='white';overlay.onclick=event=>{event.preventDefault();overlayClicks++}});
-   await page.locator('#overlay').click();assert.equal(await page.evaluate(()=>messages.length),count);assert.equal(await page.evaluate(()=>overlayClicks),1);
+   await page.locator('#overlay').click({force:true});assert.equal(await page.evaluate(()=>messages.length),count);assert.equal(await page.evaluate(()=>overlayClicks),0);
    await page.keyboard.press('Escape');assert.notEqual(await page.locator('#overlay').evaluate(el=>getComputedStyle(el).cursor),'crosshair');
    assert.deepEqual(errors,[]);await page.close();
   }

@@ -1,24 +1,34 @@
 'use strict';
 const $=id=>document.getElementById(id),t=(s,v)=>ClickImageI18n.t(s,v),L=ClickImageLibrary;
-let state={folders:[],images:[],links:[]},activeFolder='',selected=new Set(),exportFolders=new Set(),search='',visibleLimit=60,revision=0,busy=false,pendingFile=null;
+let state={libraries:[],folders:[],images:[],links:[]},activeLibrary='main',activeFolder='',selected=new Set(),exportFolders=new Set(),search='',visibleLimit=60,revision=0,busy=false;
+const collapsedGroups=new Set();
 const cards=new Map(),objectURLs=new Map(),drafts=new Map();
 const say=source=>{$('library-feedback').textContent=ClickImageI18n.error(source)};
-function folder(){return state.folders.find(f=>f.id===activeFolder)}
+function librariesFolders(){return state.folders.filter(f=>f.libraryId===activeLibrary)}
+function library(){return state.libraries.find(l=>l.id===activeLibrary)}
+function folder(){return librariesFolders().find(f=>f.id===activeFolder)}
 function entries(folderId=activeFolder){const images=new Map(state.images.map(i=>[i.id,i]));return state.links.filter(l=>l.folderId===folderId).map(l=>({...images.get(l.imageId),...l})).filter(i=>i.mime)}
 function filtered(){return entries().filter(i=>i.title.toLocaleLowerCase(ClickImageI18n.language).includes(search.toLocaleLowerCase(ClickImageI18n.language)))}
 function chosen(){const ids=new Set(filtered().map(i=>i.id));return entries().filter(i=>selected.has(i.id)&&ids.has(i.id))}
-async function refresh(){const token=++revision;try{const d=await L.snapshot();if(token!==revision)return;state=d;if(!folder())activeFolder=d.folders[0]?.id||'';const valid=new Set(entries().map(i=>i.id));selected=new Set([...selected].filter(id=>valid.has(id)));exportFolders=new Set([...exportFolders].filter(id=>d.folders.some(f=>f.id===id)));render()}catch(error){say(error.message)}}
+async function refresh(){const token=++revision;try{const d=await L.snapshot();if(token!==revision)return;state=d;if(!library())activeLibrary=d.libraries[0]?.id||'main';if(!folder())activeFolder=librariesFolders()[0]?.id||'';const valid=new Set(entries().map(i=>i.id));selected=new Set([...selected].filter(id=>valid.has(id)));exportFolders=new Set([...exportFolders].filter(id=>librariesFolders().some(f=>f.id===id)));render()}catch(error){say(error.message)}}
 function render(){
- $('folders').replaceChildren(...state.folders.map(f=>{
-  const row=document.createElement('div');row.className='folder-nav'+(f.id===activeFolder?' active':'');
+ $('library-picker').replaceChildren(...state.libraries.map(l=>new Option(l.name,l.id)));$('library-picker').value=activeLibrary;
+ const ordered=[];const folders=librariesFolders();
+ const byName=(a,b)=>a.name.localeCompare(b.name,ClickImageI18n.language,{numeric:true});
+ for(const group of folders.filter(f=>!f.parentId).sort(byName)){ordered.push(group);if(!collapsedGroups.has(group.id))ordered.push(...folders.filter(f=>f.parentId===group.id).sort(byName))}
+ $('folders').replaceChildren(...ordered.map(f=>{
+  const children=folders.filter(child=>child.parentId===f.id),row=document.createElement('div');row.className='folder-nav'+(f.id===activeFolder?' active':'')+(f.parentId?' folder-child':'');
   const check=document.createElement('input');check.type='checkbox';check.checked=exportFolders.has(f.id);check.disabled=busy;check.setAttribute('aria-label',t('Exportar pasta {name}',{name:f.name}));check.onchange=()=>{check.checked?exportFolders.add(f.id):exportFolders.delete(f.id);controls()};
-  const button=document.createElement('button');button.disabled=busy;button.setAttribute('aria-current',f.id===activeFolder?'page':'false');
-  const name=document.createElement('span');name.className='folder-name';name.textContent=f.name;const count=document.createElement('span');count.className='folder-count';count.textContent=state.links.filter(l=>l.folderId===f.id).length;button.append(name,count);
-  button.onclick=()=>{activeFolder=f.id;selected.clear();search='';$('search').value='';visibleLimit=60;render()};row.append(check,button);return row;
+  if(children.length){const toggle=document.createElement('button');toggle.className='group-toggle';toggle.textContent=collapsedGroups.has(f.id)?'▸':'▾';toggle.setAttribute('aria-label',t('Expandir ou recolher grupo'));toggle.setAttribute('aria-expanded',String(!collapsedGroups.has(f.id)));toggle.disabled=busy;toggle.onclick=()=>{collapsedGroups.has(f.id)?collapsedGroups.delete(f.id):collapsedGroups.add(f.id);render()};row.append(toggle)}
+  const button=document.createElement('button');button.className='folder-open';button.disabled=busy;button.setAttribute('aria-current',f.id===activeFolder?'page':'false');
+  const name=document.createElement('span');name.className='folder-name';name.textContent=f.name;const count=document.createElement('span');count.className='folder-count';const descendants=L.descendants(folders,f.id);count.textContent=new Set(state.links.filter(l=>descendants.has(l.folderId)).map(l=>l.imageId)).size;button.append(name,count);
+  button.onclick=()=>{activeFolder=f.id;selected.clear();drafts.clear();search='';$('search').value='';visibleLimit=60;render()};row.append(check,button);return row;
  }));
+ $('new-set').disabled=busy||!folder()||!!folder().parentId;
+ $('folder-kind').textContent=t(folder()?.parentId?'Conjunto':'Grupo');
  $('folder-title').textContent=folder()?.name||t('Biblioteca');$('folder-count').textContent=t('{count} imagens',{count:entries().length});
  $('storage-usage').textContent=ClickImageUtils.formatFileSize(state.images.reduce((n,i)=>n+i.sizeBytes,0))+' / 512 MB';
- const previous=$('destination').value;$('destination').replaceChildren(...state.folders.filter(f=>f.id!==activeFolder).map(f=>new Option(f.name,f.id)));if([...$('destination').options].some(o=>o.value===previous))$('destination').value=previous;
+ const previous=$('destination').value;$('destination').replaceChildren(...librariesFolders().filter(f=>f.id!==activeFolder).map(f=>new Option((f.parentId?(librariesFolders().find(parent=>parent.id===f.parentId)?.name+' / '):'')+f.name,f.id)));if([...$('destination').options].some(o=>o.value===previous))$('destination').value=previous;
  const visible=filtered().slice(0,visibleLimit),visibleIds=new Set(visible.map(i=>i.id));
  for(const [id,card]of cards)if(!visibleIds.has(id)){card.remove();cards.delete(id);URL.revokeObjectURL(objectURLs.get(id));objectURLs.delete(id)}
  for(const item of visible){
@@ -52,20 +62,21 @@ function controls(){
  const items=chosen(),all=filtered();$('selection-count').textContent=t('{count} selecionadas',{count:items.length});
  $('select-all').checked=!!all.length&&items.length===all.length;$('select-all').indeterminate=!!items.length&&items.length<all.length;$('select-all').disabled=busy||!all.length;
  $('download-selected').textContent=t($('zip-mode').checked?'Baixar ZIP':'Baixar imagens');$('download-selected').disabled=busy||!items.length;
- for(const id of ['new-folder','rename-folder','delete-folder','import-library','export-library','library-layout','zip-mode','search','load-more'])$(id).disabled=busy;
+ for(const id of ['new-folder','rename-folder','delete-folder','import-library','export-library','library-layout','zip-mode','search','load-more','move-folder','library-picker','new-library','rename-library'])$(id).disabled=busy;
  for(const id of ['copy-selected','move-selected'])$(id).disabled=busy||!items.length||!$('destination').value;
  $('delete-selected').disabled=busy||!items.length;$('export-folders').disabled=busy||!exportFolders.size;
+ const folders=librariesFolders();$('select-all-folders').checked=!!folders.length&&exportFolders.size===folders.length;$('select-all-folders').indeterminate=!!exportFolders.size&&exportFolders.size<folders.length;$('select-all-folders').disabled=busy||!folders.length;
 }
 async function run(action){if(busy)return;busy=true;render();try{await action()}catch(error){say(error.message)}finally{busy=false;await refresh()}}
 async function openImage(id){try{await chrome.tabs.create({url:chrome.runtime.getURL('image-view.html')+'?id='+encodeURIComponent(id)})}catch(error){say(error.message)}}
-function titleFor(item){return drafts.get(item.id)??item.title}
+function titleFor(item){return item.folderId===activeFolder?(drafts.get(item.id)??item.title):item.title}
 function filename(item){return ClickImageUtils.downloadFilename('https://clickimage.invalid/image',titleFor(item),item.mime)}
 function archiveName(name){return (ClickImageUtils.safeTitle(name)||'ClickImage')+'.zip'}
 async function localZip(items,name,onProgress){
  const entries=[],failures=[],used=new Set(),seen=new Set();let totalBytes=0,finished=0;
  for(const item of items){
   if(seen.has(item.id))continue;seen.add(item.id);
-  try{const blob=await L.getBlob(item.id);if(totalBytes+blob.size>ClickImageZip.MAX_TOTAL)throw new Error('Limite de tamanho do ZIP excedido.');const bytes=new Uint8Array(await blob.arrayBuffer());entries.push({name:ClickImageZip.uniqueName(filename(item),used),bytes});totalBytes+=bytes.length}catch(error){failures.push(item.title+': '+t(error.message))}
+  try{const blob=await L.getBlob(item.id);if(totalBytes+blob.size>ClickImageZip.MAX_TOTAL)throw new Error('Limite de tamanho do ZIP excedido.');const bytes=new Uint8Array(await blob.arrayBuffer());entries.push({name:ClickImageZip.uniqueName((item.archivePath||'')+filename(item),used),bytes});totalBytes+=bytes.length}catch(error){failures.push(item.title+': '+t(error.message))}
   onProgress?.(++finished,items.length);
  }
  if(!entries.length)throw new Error('Nenhuma imagem pôde ser obtida para o ZIP.');
@@ -83,31 +94,45 @@ $('zip-mode').onchange=()=>{controls();chrome.storage.local.set({clickimageLibra
 $('select-all').onchange=()=>{const checked=$('select-all').checked;for(const item of filtered())checked?selected.add(item.id):selected.delete(item.id);render()};
 $('search').oninput=()=>{search=$('search').value;visibleLimit=60;selected.clear();render()};
 $('load-more').onclick=()=>{visibleLimit+=60;render()};
-$('new-folder').onclick=()=>{const name=prompt(t('Nome da pasta'));if(name!==null)run(async()=>{const f=await L.createFolder(name);activeFolder=f.id;selected.clear()})};
+$('new-set').onclick=()=>{const parent=folder();if(!parent||parent.parentId)return;const name=prompt(t('Nome do conjunto'));if(name!==null)run(async()=>{const f=await L.createFolder(name,activeLibrary,parent.id);collapsedGroups.delete(parent.id);activeFolder=f.id;selected.clear()})};
+$('move-folder').onclick=()=>{const current=folder();if(!current)return;const blocked=L.descendants(librariesFolders(),current.id);$('folder-parent').replaceChildren(new Option(t('Primeiro nível (grupo)'),''),...librariesFolders().filter(f=>!f.parentId&&!blocked.has(f.id)&&!librariesFolders().some(child=>child.parentId===current.id)).map(f=>new Option(f.name,f.id)));$('folder-parent').value=current.parentId||'';$('folder-parent-dialog').showModal()};
+$('folder-parent-dialog').addEventListener('close',()=>{if($('folder-parent-dialog').returnValue==='save')run(()=>L.moveFolder(activeFolder,$('folder-parent').value||null))});
+$('new-folder').onclick=()=>{const name=prompt(t('Nome do grupo'));if(name!==null)run(async()=>{const f=await L.createFolder(name,activeLibrary);activeFolder=f.id;selected.clear()})};
 $('rename-folder').onclick=()=>{const name=prompt(t('Nome da pasta'),folder()?.name);if(name!==null)run(()=>L.renameFolder(activeFolder,name))};
-$('delete-folder').onclick=()=>{if(confirm(t('Excluir esta pasta e suas referências? As outras pastas serão preservadas.')))run(()=>L.deleteFolders([activeFolder]))};
+$('delete-folder').onclick=()=>{if(confirm(t('Excluir esta pasta, seus conjuntos e suas referências? As outras pastas serão preservadas.')))run(()=>L.deleteFolders([activeFolder]))};
 $('delete-selected').onclick=()=>{if(confirm(t('Excluir as imagens selecionadas desta pasta?')))run(async()=>{await L.removeImages(activeFolder,chosen().map(i=>i.id));selected.clear()})};
 for(const mode of ['copy','move'])$(mode+'-selected').onclick=()=>run(async()=>{await L.transfer(activeFolder,$('destination').value,chosen().map(i=>i.id),mode==='move');$('organize').open=false;say(t('Organização concluída.'))});
 $('library-layout').onchange=()=>{const layout=$('library-layout').value;$('image-list').dataset.layout=layout;chrome.storage.local.set({clickimageLibraryLayout:layout}).catch(()=>{})};
 $('export-folders').onclick=()=>run(async()=>{
- $('library-menu').open=false;const failures=[];let saved=0;
- for(const f of state.folders.filter(f=>exportFolders.has(f.id))){const items=entries(f.id);if(!items.length){failures.push(f.name+': '+t('Pasta vazia.'));continue}try{const result=await localZip(items,f.name,(finished,total)=>say(f.name+' · '+t('Processando {finished} de {total}…',{finished,total})));saved++;failures.push(...result.failures)}catch(error){failures.push(f.name+': '+t(error.message))}}
+ const failures=[];let saved=0;
+ const folders=librariesFolders();const roots=folders.filter(f=>exportFolders.has(f.id)&&!(f.parentId&&exportFolders.has(f.parentId)));
+ for(const f of roots){const ids=L.descendants(folders,f.id),items=[...ids].flatMap(id=>entries(id).map(item=>({...item,archivePath:id===f.id?'':(ClickImageUtils.safeTitle(folders.find(child=>child.id===id).name)||'Conjunto')+'/'})));if(!items.length){failures.push(f.name+': '+t('Pasta vazia.'));continue}try{const result=await localZip(items,f.name,(finished,total)=>say(f.name+' · '+t('Processando {finished} de {total}…',{finished,total})));saved++;failures.push(...result.failures)}catch(error){failures.push(f.name+': '+t(error.message))}}
  say(t('ZIPs salvos: {count}',{count:saved})+(failures.length?'\n'+failures.join('\n'):''));
 });
+$('select-all-folders').onchange=()=>{const checked=$('select-all-folders').checked;exportFolders=new Set(checked?librariesFolders().map(f=>f.id):[]);render()};
+function switchLibrary(id){activeLibrary=id;activeFolder='';selected.clear();exportFolders.clear();drafts.clear();search='';$('search').value='';visibleLimit=60;say('');activeFolder=librariesFolders()[0]?.id||'';render();chrome.storage.local.set({clickimageActiveLibrary:id}).catch(()=>{});refresh()}
+$('library-picker').onchange=()=>switchLibrary($('library-picker').value);
+$('new-library').onclick=()=>{const name=prompt(t('Nome da Biblioteca'));if(name!==null)run(async()=>{const created=await L.createLibrary(name);activeLibrary=created.id;activeFolder='';selected.clear();exportFolders.clear();drafts.clear();await chrome.storage.local.set({clickimageActiveLibrary:created.id})})};
+$('rename-library').onclick=()=>{const name=prompt(t('Nome da Biblioteca'),library()?.name);if(name!==null)run(()=>L.renameLibrary(activeLibrary,name))};
 $('export-library').onclick=()=>run(async()=>{
- $('library-menu').open=false;const blob=await ClickImageBackup.exportLibrary(p=>say(t('Processando {finished} de {total}…',p)));say(t('Salvando backup…'));await ClickImageFiles.save(blob,'ClickImage-backup.zip');say(t('Backup salvo. Guarde este arquivo em um local seguro.'));
+ let failed=0;const blob=await ClickImageBackup.exportLibrary(p=>{failed=p.failed||0;say(t('Processando {finished} de {total}…',p))},activeLibrary);say(t('Salvando backup…'));
+ const json=blob.type==='application/json';
+ const name=(ClickImageUtils.safeTitle(library()?.name)||'ClickImage')+'-backup.'+(json?'json':'zip');
+ if(!json)say(t('Biblioteca acima de 16 MB: usando ZIP com JSON e imagens para reduzir o uso de memória.'));
+ await ClickImageFiles.save(blob,name);say(t('Backup salvo. Guarde este arquivo em um local seguro.')+(failed?' '+t('Arquivos indisponíveis: {count}.',{count:failed}):'')+(!json?' '+t('Biblioteca acima de 16 MB: usando ZIP com JSON e imagens para reduzir o uso de memória.'):''));
 });
-$('import-library').onclick=()=>{$('library-menu').open=false;$('backup-file').value='';$('backup-file').click()};
-$('backup-file').onchange=()=>{const file=$('backup-file').files[0];if(!file)return;pendingFile=file;$('import-dialog').querySelector('[value=merge]').checked=true;$('import-dialog').showModal()};
-$('import-dialog').addEventListener('close',()=>{
- const file=pendingFile;pendingFile=null;if($('import-dialog').returnValue!=='import'||!file)return;
- const replace=$('import-dialog').querySelector('[name=import-mode]:checked').value==='replace';
- if(replace&&!confirm(t('Apagar toda a Biblioteca atual e substituí-la pelo backup? Esta ação só acontece após a validação completa.')))return;
- run(async()=>{const result=await ClickImageBackup.importLibrary(file,{replace,confirmed:replace,onProgress:p=>say(t('Validando {finished} de {total}…',p))});selected.clear();drafts.clear();say(t('Restauradas: {folders} pastas, {images} imagens. Duplicidades evitadas: {duplicates}.',result))});
-});
+$('import-library').onclick=()=>{$('backup-file').value='';$('backup-file').click()};
+$('backup-file').onchange=()=>{
+ const file=$('backup-file').files[0];if(!file)return;
+ run(async()=>{
+  const result=await ClickImageBackup.importLibrary(file,{onProgress:p=>say(t('Validando {finished} de {total}…',p))});
+  activeLibrary=result.libraryId;activeFolder='';selected.clear();exportFolders.clear();drafts.clear();search='';$('search').value='';
+  try{await chrome.storage.local.set({clickimageActiveLibrary:result.libraryId})}catch{}
+  say(t('Biblioteca “{name}” importada: {folders} pastas e {images} imagens. Indisponíveis: {failed}.',result)+(result.failures.length?'\n'+result.failures.map(f=>(f.name||f.id)+': '+t(f.error)).join('\n'):''));
+ });
+};
 window.addEventListener('pagehide',()=>{for(const url of objectURLs.values())URL.revokeObjectURL(url)});
 let refreshTimer;L.onChange(()=>{clearTimeout(refreshTimer);refreshTimer=setTimeout(refresh,60)});
 function language(){document.documentElement.lang=ClickImageI18n.language;ClickImageI18n.apply(document);render()}
 ClickImageI18n.onChange(language);ClickImageI18n.ready.then(language);ClickImageFiles.links();
-chrome.storage.local.get(['clickimageLibraryLayout','clickimageLibraryZip']).then(p=>{const layout=['grid','list'].includes(p.clickimageLibraryLayout)?p.clickimageLibraryLayout:'grid';$('library-layout').value=layout;$('image-list').dataset.layout=layout;$('zip-mode').checked=p.clickimageLibraryZip===true;controls()}).catch(()=>{});
-refresh();
+chrome.storage.local.get(['clickimageLibraryLayout','clickimageLibraryZip','clickimageActiveLibrary']).then(p=>{activeLibrary=p.clickimageActiveLibrary||'main';const layout=['grid','list'].includes(p.clickimageLibraryLayout)?p.clickimageLibraryLayout:'grid';$('library-layout').value=layout;$('image-list').dataset.layout=layout;$('zip-mode').checked=p.clickimageLibraryZip===true;controls();return refresh()}).catch(()=>refresh());

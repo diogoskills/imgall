@@ -1,52 +1,72 @@
 # ClickImage
 
-## Biblioteca permanente — versão 2.8.0
+## Bibliotecas e organização — versão 2.9.0
 
-O painel mantém sua área de coleta temporária por aba. **Biblioteca** abre uma janela própria que pode continuar aberta enquanto você navega e usa o painel. O Chrome permite mover essa janela manualmente; a extensão não consegue acoplar uma segunda janela ao side panel nem garantir que fique sempre por cima.
+O painel mantém a coleta temporária por aba. **Biblioteca** abre uma janela independente que pode ficar aberta durante a navegação. O Chrome permite posicioná-la manualmente; não é possível acoplar outra janela ao side panel ou garantir que fique sempre por cima.
 
-**Salvar referências:** em cada cartão do painel, clique no ícone de marcador **Salvar na Biblioteca**, escolha a pasta e confirme. O diálogo permite criar uma pasta. A Biblioteca começa com **Minhas referências**, que pode ser renomeada ou excluída. Se a última pasta for excluída, uma nova pasta padrão vazia será criada. Todas as exclusões de pasta pedem confirmação. A coleta da sessão e as preferências existentes não são migradas, apagadas nem sobrescritas.
+### Grupos → Conjuntos → Itens
 
-A Biblioteca oferece:
+Use o seletor **Biblioteca** para alternar entre acervos independentes. **Nova Biblioteca** cria um acervo vazio e o lápis altera seu nome. Cada um tem suas próprias pastas, nomes e referências.
 
-- Busca por nome dentro da pasta aberta, modos Grade e Lista e preferências próprias.
-- Caixas de seleção por imagem e **Selecionar todas** (considera o resultado atual da pesquisa). Mudar a busca limpa a seleção para evitar operações em itens ocultos.
-- **Organizar** → mover, copiar ou excluir selecionadas. O nome pode ser editado por pasta, sem alterar o arquivo ou os nomes das cópias em outras pastas.
-- Contagens por pasta e deduplicação por SHA-256 dos bytes. Arquivos iguais com URLs diferentes não são repetidos na mesma pasta; cópias entre pastas compartilham os mesmos bytes locais.
-- Abertura local em nova aba por botão ou clique do meio na imagem, em tamanho natural e zoom por aba de 100%, sem alterar o zoom global. O painel continua abrindo o arquivo remoto diretamente como antes.
-- URLs originais e pesquisa Lens quando a origem está disponível. A pesquisa envia a URL ao Google somente após o clique.
+- **+** na seção **Grupos** cria um grupo no primeiro nível. As pastas existentes da 2.8 viram grupos, mantendo nomes, IDs e imagens.
+- **Novo conjunto** no cabeçalho do grupo cria uma pasta dentro dele. A seta ao lado do grupo expande/recolhe seus conjuntos.
+- Os **itens** são as imagens. Um grupo também pode manter imagens diretamente, preservando a organização anterior. Conjuntos não contêm outros conjuntos.
+- **Mover grupo ou conjunto** permite colocar um conjunto em outro grupo ou no primeiro nível. Ciclos e níveis extras são rejeitados. Renomear/excluir continuam disponíveis; excluir um grupo pede confirmação e também remove seus conjuntos. Imagens referenciadas por outras pastas ou Bibliotecas permanecem disponíveis.
+- Busca por nome na pasta aberta, Grade/Lista, seleção múltipla, nomes editáveis, mover/copiar/remover imagens e abertura local em tamanho natural continuam funcionando.
 
-### Persistência e privacidade
+### Seleção exclusiva de imagens
 
-`library-store.js` usa IndexedDB (`clickimage-library`, esquema 1): pastas, metadados de imagens, arquivos Blob separados e referências entre pastas. `chrome.storage.local` contém preferências e um sinal de atualização; arquivos de imagem não são guardados em localStorage. Janelas da extensão compartilham o IndexedDB e recebem atualização automática via BroadcastChannel/storage. Não há servidores próprios, login, contas ou sincronização em nuvem.
+Enquanto **Caçar imagem** está ativo, uma camada transparente captura os cliques na página e só aceita imagens/posters identificados. Links, botões, controles de vídeo/áudio, cliques do meio/direito e frames de outras origens não recebem os cliques. O cursor fica bloqueado sobre áreas não selecionáveis e a mensagem orienta a usar **Parar seleção** ou **ESC** para navegar normalmente. Cliques sintéticos disparados pelo site não entram na coleta.
 
-O arquivo é realmente obtido antes de confirmar o salvamento; não criamos referências permanentes que dependam só da URL. A assinatura identifica o formato, e os formatos decodificáveis pelo navegador são também verificados com o codec nativo. Os bytes originais são mantidos sem recompressão ou redimensionamento. Sites podem bloquear a leitura por CORS, autenticação ou URL expirada. Nesses casos, o salvamento falha com mensagem; o download remoto já existente continua disponível. Nenhuma restrição é contornada e nenhuma permissão global de acesso a sites foi adicionada.
+A rolagem continua disponível, inclusive em contêineres internos. O inspetor lê os elementos reais sob a camada e raízes Shadow DOM abertas. ESC, Parar seleção, fechamento do painel ou desconexão removem o bloqueio e seus listeners. Tab e atalhos do navegador permanecem disponíveis; teclas de ação/edição na página são bloqueadas durante a caça. Vídeos não são capturados como arquivo: somente posters estáticos continuam elegíveis.
 
-Limites desta versão: **32 MB por imagem, 512 MB por Biblioteca, 5.000 arquivos únicos, 20.000 referências e 200 pastas**. O espaço realmente disponível depende do Chrome e do disco. Falhas de quota são apresentadas; transações abortadas preservam o estado anterior. A lista monta 60 cartões por vez e oferece **Mostrar mais imagens**; URLs Blob de prévias removidas são liberadas. A Biblioteca aceita JPG, PNG, WEBP, AVIF, GIF, BMP, ICO e TIF; a decodificação/visualização de TIF depende do navegador. SVG fica fora da Biblioteca/backups nesta versão, para impedir conteúdo vetorial ativo importado; o download original e a coleta existentes não mudam.
+### Salvar pelo painel
 
-Os dados persistem ao fechar/reabrir o navegador, mas **remover a extensão, excluir seus dados, perder o perfil ou o disco pode apagá-los**. Mantenha backups. Armazenamento local não é sincronização entre dispositivos.
+Clique no marcador **Salvar na Biblioteca**, escolha **Biblioteca** e **Pasta de destino**, e confirme. O diálogo mostra `Grupo / Conjunto` e permite criar um grupo. O último destino utilizado é lembrado. Cada cartão mostra salvando, sucesso com pasta/contagem, duplicidade ou erro; um erro não apaga sucessos anteriores. A duplicidade considera o **SHA-256 dos bytes**, sem usar nomes de arquivos. Arquivos diferentes com o mesmo nome podem coexistir.
 
-### Downloads e ZIPs
+A investigação da 2.8 não reproduziu perda no armazenamento com 2, 5 e 10 imagens distintas de nomes iguais, nem com 10 gravações simultâneas. A 2.9 reforça o destino explícito e o feedback individual; esses mesmos cenários são executados na versão nova com PNGs visualmente diferentes. Bloqueio de leitura pelo site (CORS), URL expirada e falta de espaço continuam possíveis e são reportados, sem marcar o item como salvo.
 
-Marque imagens; o botão principal fica desativado sem seleção. **ZIP** desligado baixa arquivos individuais em sequência, aguardando o resultado do download anterior; ligado gera **Baixar ZIP**. O ZIP recebe o nome seguro da pasta, usa o codificador STORE existente e preserva os bytes e formatos. Nomes repetidos ganham sufixos; cada imagem selecionada entra uma vez. Arquivos indisponíveis ficam fora, com resumo de falhas; se nenhum puder ser obtido, não é gerado ZIP vazio de imagens.
+### ZIPs de imagens
 
-Marque pastas na coluna esquerda e abra **••• → Exportar pastas em ZIPs** para baixar um ZIP por pasta. Pastas vazias são indicadas e ignoradas. ZIPs comuns aceitam até **128 MB de imagens por arquivo**. Mantenha a janela aberta durante o processamento e até o download ser confirmado. Ao fechá-la, operações que ainda não terminaram não serão retomadas automaticamente. Downloads remotos da coleta continuam usando o fluxo anterior.
+Marque grupos/conjuntos na coluna esquerda ou use **Selecionar todas** para marcar/desmarcar todos. O botão **.ZIP**, fixo abaixo da lista e acima do armazenamento, só habilita com seleção. Apenas a lista rola.
 
-### Backup e restauração
+Cada raiz selecionada gera um ZIP com seu próprio nome. Um grupo inclui as imagens de seus conjuntos em subdiretórios. Se o grupo e um de seus conjuntos estiverem marcados, o conjunto já incluído não gera um segundo download. Cada arquivo idêntico entra uma vez por ZIP; nomes repetidos recebem sufixos. A hierarquia e todas as referências, inclusive cópias em várias pastas, são preservadas integralmente no backup estruturado.
 
-**••• → Exportar Biblioteca** cria `ClickImage-backup.zip`, inclusive para uma Biblioteca vazia. Esse arquivo contém `manifest.json` interno com formato `clickimage-library`, versão 1, pastas, nomes por pasta, datas, formatos implícitos pelos arquivos e dimensões, além dos arquivos originais em `images/<sha256>.<extensão>`. Este manifesto interno não é o manifesto da extensão. Os formatos e tamanhos são revalidados na importação. **URLs de origem não entram no backup**, porque links assinados podem conter tokens. Após restaurar em um acervo vazio, copiar URL/pesquisar ficam desativados para essas referências; visualizar e baixar o arquivo local continuam funcionando.
+O botão principal sobre as imagens continua oferecendo arquivos individuais em sequência ou ZIP da seleção. Os dois fluxos usam o mesmo codificador ZIP STORE e o monitor de downloads existentes. Arquivos não são redimensionados ou recomprimidos; erros individuais não interrompem os demais. Pastas vazias são indicadas. Mantenha a janela aberta até finalizar: tarefas de preparação ainda em andamento não são retomadas após fechá-la.
 
-**••• → Importar Biblioteca** oferece:
+### Exportar e Importar Biblioteca
 
-- **Mesclar:** combina pastas de mesmo nome (sem diferenciar maiúsculas/minúsculas), preserva itens existentes e evita conteúdo duplicado por pasta.
-- **Substituir:** exige confirmação explícita e só apaga o acervo anterior dentro da mesma transação que restaura o backup validado.
+Os dois botões ficam **visíveis acima da pesquisa**, sem menu secundário. Exportam a Biblioteca ativa, sem misturar outros acervos.
 
-A validação acontece completamente antes da escrita. Quota, falha ou interrupção da transação impedem alterações parciais. Caminhos inseguros, conteúdo extra, corrupção CRC, hashes incompatíveis, formatos/versões desconhecidos e ZIPs que não seguem o backup STORE gerado pelo ClickImage são rejeitados. Não se executa código importado nem se extrai conteúdo para caminhos no disco.
+**Exportar Biblioteca** gera `<nome>-backup.json` para até **16 MB de imagens originais**. O JSON contém formato `clickimage-library`, versão **2**, nome/ID da Biblioteca, grupos/conjuntos com IDs e `parentId`, nomes por pasta, referências, datas, formato, MIME, dimensões, tamanho, SHA-256 e o conteúdo dos arquivos em Base64. Base64 não altera a qualidade; os bytes são reconstituídos na importação.
 
-Backups completos têm limite de **128 MB de imagens + 4 MB de metadados**, com limites adicionais de entradas. A implementação não descompacta ZIPs externos e não aceita ZIPs arbitrários de fotos. Para acervos maiores, os ZIPs por pasta permitem guardar os arquivos, mas **não substituem um backup restaurável completo**. Exportação de backup falha se faltar um arquivo, em vez de produzir uma restauração incompleta. Ainda não há backup incremental nem leitura em streaming; respeitamos esses limites para conter uso de memória.
+Acima de 16 MB, o mesmo botão gera automaticamente `<nome>-backup.zip`, com um JSON de metadados e os arquivos originais em `images/<sha256>.<extensão>`. A interface explica a alternativa. Base64 aumenta o arquivo em aproximadamente 33%, e o texto JSON também ocupa memória ao ser serializado; manter os arquivos binários no ZIP reduz esse custo. O ZIP não recomprime imagens. Há um limite de **128 MB de imagens + 4 MB de metadados** por backup; importações JSON aceitam até **28 MB de arquivo** e 16 MB de imagens decodificadas. Ainda não há backup incremental nem streaming.
 
-### Links e publicação
+**Importar Biblioteca** aceita JSON v2, ZIP v2 e backups ZIP v1 feitos pela 2.8. Cada importação cria **uma nova Biblioteca**, mesmo que o nome já exista: `Nome`, `Nome (2)`, `Nome (3)`. Nunca mescla, substitui ou apaga automaticamente a anterior. IDs de Biblioteca/pastas são remapeados, referências são preservadas, e os arquivos de mesmo conteúdo são compartilhados localmente entre acervos para evitar armazenamento redundante.
 
-Edite apenas `config.js` para alterar `donateURL` (Livepix preservado) e `socialURL` (X de diogoskills). Donate e X usam HTML/CSS/SVG locais com `target="_blank"` e `rel="noopener noreferrer"`. Não há Ko-fi, widgets, scripts remotos nem pagamentos internos.
+A estrutura, versão, caminhos ZIP, CRC, Base64, formato real, tamanho, SHA-256 e hierarquia são validados antes da gravação. Formatos desconhecidos, corrupção e hierarquias cíclicas ou com níveis extras são rejeitados. Falhas de quota ou interrupção abortam a transação completa, sem deixar uma Biblioteca parcialmente criada nem alterar as anteriores. Não se executa código importado e não se extrai conteúdo para caminhos do sistema.
+
+Se o arquivo já estiver indisponível no acervo, a exportação registra a referência como `unavailable`, sem inventar conteúdo. Na importação, referências explicitamente indisponíveis são informadas por nome e contagem; somente imagens recuperadas são criadas. Conteúdo presente mas corrompido causa rejeição do backup. **URLs de origem não entram no backup**, pois links assinados podem conter tokens. Se o navegador já conhecer o mesmo arquivo, sua URL existente continua utilizável; caso contrário, copiar URL/Lens ficam desativados após importar, mas visualizar e baixar o arquivo local funcionam.
+
+### Persistência, limites e privacidade
+
+IndexedDB `clickimage-library`, esquema **2**, contém Bibliotecas, pastas, metadados, Blobs e referências. A atualização do esquema 1 ocorre em uma transação de migração que atribui as pastas antigas à Biblioteca principal, sem alterar seus arquivos ou referências. `chrome.storage.local` guarda preferências, destino recente e sinais de atualização. Arquivos não são guardados em localStorage. BroadcastChannel/storage atualizam as interfaces automaticamente.
+
+Os limites são **globais no navegador**, não por Biblioteca: **50 Bibliotecas, 200 grupos/conjuntos, 5.000 arquivos únicos, 20.000 referências e 512 MB**, com até **32 MB por imagem, 64 megapixels e 32.768 px por lado** para novos arquivos. Imagens maiores continuam disponíveis para download direto pelo painel, sem conversão. A quota real depende do navegador/disco. A lista monta 60 cartões por vez com **Mostrar mais imagens** e libera URLs Blob de prévias removidas.
+
+A Biblioteca aceita JPG, PNG, WEBP, AVIF, GIF, BMP, ICO e TIF; a visualização de TIF depende do navegador. SVG permanece fora da Biblioteca por segurança de conteúdo vetorial ativo importado; a coleta/download anteriores continuam funcionando. Não há servidores próprios, contas, sincronização em nuvem, scripts remotos nem novas permissões globais de sites. Os arquivos locais persistem ao reiniciar o navegador, mas remover a extensão, excluir seus dados ou perder o perfil/disco pode apagá-los. Mantenha backups.
+
+### Segurança e alcance dos dados
+
+Cada perfil do Chrome tem seu próprio IndexedDB. Não há banco compartilhado, API própria, contas ou sincronização entre usuários; BroadcastChannel e eventos de storage alcançam somente o contexto da extensão naquele perfil. Uma importação não escreve no navegador de outras pessoas. Um arquivo distribuído a terceiros precisa ser importado por cada destinatário, e por isso também tratamos perda e exposição de dados locais como riscos reais.
+
+Backups são dados: nomes viram texto/valores de campos, nunca HTML executável; URLs de arquivos importados são ignoradas e a restauração não faz requisições externas. Scripts, HTML/SVG ativos, alterações de protótipo, caminhos inseguros e arquivos corrompidos não são executados. A extensão só escreve no seu armazenamento local e nos downloads solicitados. A CSP explícita permite scripts somente do pacote e bloqueia scripts inline, eval, objetos, frames, mudança de base e submissão de formulários. As exceções de rede continuam limitadas às ações já existentes: obter a imagem escolhida, abrir o link Donate/X e abrir Lens após o clique do usuário.
+
+Limites de entradas/tamanho/dimensões, leitura antecipada de dimensões nos cabeçalhos raster comuns e validação sem descompactação de conteúdo comprimido reduzem abuso de memória e ZIP bombs. Uma falha não deve substituir acervos: importações usam transação atômica e Biblioteca nova. Essa revisão não equivale a uma auditoria independente do Chrome, dos codecs nativos ou de futuras funções de backend. Se houver servidores/contas no futuro, exigirão revisão própria de autorização e isolamento.
+
+### Donate, validação e publicação
+
+Os links públicos ficam exclusivamente em `config.js`: Donate abre **https://ko-fi.com/diogoskills** e X abre **https://x.com/diogoskills**. Os botões usam HTML/CSS/SVG próprios, o neon foi preservado e as novas abas usam `noopener noreferrer`. Nenhum widget ou script externo do Ko-fi é carregado.
 
 ```sh
 npm run check
@@ -56,17 +76,21 @@ node tests/browser.cjs
 node tests/youtube.cjs
 node tests/social.cjs
 npm run test:library
+npm run test:storage
+npm run test:selection
 npm run build
 ```
 
-`npm run build` gera **`dist/ClickImage-2.8.0.zip`** a partir de lista explícita de arquivos. Testes, documentos, scripts de build, Git, dados locais e credenciais não entram no pacote. Extraia o ZIP para carregar sem compactação no Chrome; selecione a pasta que contém diretamente `manifest.json`. Para atualizar uma instalação de desenvolvimento e preservar dados, mantenha a mesma pasta/ID da extensão e use **Recarregar**, sem remover a extensão. O ZIP está pronto para revisão e upload manual; nenhuma publicação na Chrome Web Store é feita automaticamente.
+`tests/library-storage.cjs` cria dados com o código real da 2.8, testa migração, bytes, 2/5/10 salvamentos consecutivos e 10 simultâneos nas duas versões, nomes iguais, deduplicação, grupos/conjuntos e reinício do processo de Chromium com o mesmo perfil em disco. `tests/library.cjs` cobre os controles visíveis, salvamento/erros por cartão, contagens, ZIP fixo, seleção, hierarquia, JSON, importações independentes com nomes repetidos, conteúdo indisponível, quota, integridade e persistência. Testes unitários cobrem JSON, ZIP grande, importação legada e rejeições de segurança.
 
-**Validação automatizada:** `tests/library.cjs` executa Chromium real com IndexedDB no disco e reinicia o processo usando o mesmo perfil. As APIs de janelas, armazenamento de preferências e downloads do Chrome são simuladas; isso não substitui homologação nativa. Os testes incluem persistência, CRUD, sincronização com o painel, seleção/organização, integridade dos bytes, downloads, ZIP parcial, exportação de pastas, backup vazio/cheio, mesclagem, confirmação de substituição, rejeições de segurança e rollback após falha de quota simulada. `tests/backup.test.cjs` acrescenta verificações unitárias de estrutura e segurança ao `npm test`. A instalação nativa via carregamento automático de extensão não ficou disponível no Chromium deste ambiente. Sites reais autenticados e publicação na loja precisam de validação manual; fixtures sintéticas não provam acesso em todos os sites.
+**Limite da validação automatizada:** IndexedDB, arquivos e codecs são reais; as APIs Chrome de janelas/downloads/preferências são simuladas. Instalação nativa, atualização no Chrome do usuário e sites reais autenticados ainda precisam de homologação manual. Fixtures não provam acesso em todos os sites.
 
-Arquivos principais novos: `library.html/css/js`, `library-store.js`, `library-backup.js`, `library-panel.js`, `image-view.html/css/js`, `image-card.js`, `files.js`, `config.js`, scripts e testes. O restante deste README registra os comportamentos e decisões das versões anteriores; os limites e fluxos acima prevalecem para a Biblioteca 2.8.
+`npm run build` gera **`dist/ClickImage-2.9.0.zip`**, com lista explícita de arquivos e manifesto na raiz, sem testes, documentos, Git, dados locais ou credenciais. Para carregar sem compactação, extraia e escolha a pasta que contém diretamente `manifest.json`. **Atualize na mesma pasta/ID e use Recarregar, sem remover a extensão**, para preservar dados. Feche janelas antigas da Biblioteca e reabra depois da atualização. Nenhuma publicação automática na Chrome Web Store é feita.
+
+O restante deste README registra o seletor, os downloads e decisões de versões anteriores; os fluxos acima prevalecem para as Bibliotecas 2.9.
 
 
-Extensão Manifest V3 para baixar o recurso de uma imagem selecionada na página, sem screenshots, recortes ou processamento do arquivo. JavaScript puro, HTML5, CSS3 e APIs do Chrome; sem servidor, banco de dados, telemetria ou código remoto.
+Extensão Manifest V3 para baixar o recurso de uma imagem selecionada na página, sem screenshots, recortes ou processamento do arquivo. JavaScript puro, HTML5, CSS3 e APIs do Chrome; sem servidor, telemetria ou código remoto; a Biblioteca usa IndexedDB local.
 
 ## Instalação no Chrome
 
@@ -92,7 +116,7 @@ Cada aba mantém sua própria coleção durante a sessão do navegador; fechar o
 
 A busca pode levar até oito segundos. A miniatura de 48px só é reduzida visualmente com CSS; o download recebe o arquivo encontrado sem transformação. Se o servidor bloquear a prévia, o painel informa isso e permite confirmar a URL mesmo assim. O nome e o formato final continuam seguindo o MIME informado pelo Chrome.
 
-Permissões: `activeTab` e `scripting` para selecionar após sua ação; `downloads` para baixar após confirmação; `sidePanel` para a interface lateral; `storage` para guardar seleção e estado de download em `chrome.storage.session`. Não é usado armazenamento persistente nem acesso permanente a todos os sites.
+Permissões: `activeTab` e `scripting` para selecionar após sua ação; `downloads` para baixar após confirmação; `sidePanel` para a interface lateral; `storage` para guardar seleção e estado de download em `chrome.storage.session`. Preferências e Bibliotecas usam armazenamento local persistente; não há acesso permanente a todos os sites.
 
 ## Recursos
 
@@ -263,6 +287,6 @@ O seletor no rodapé oferece **Português (Brasil)**, **English** e **Español**
 
 As traduções são empacotadas em `i18n.js`, sem serviços remotos nem novas permissões. Os metadados nativos usam `_locales` e o fallback `pt_BR`; a descrição mostrada pelo gerenciador do Chrome segue o idioma do navegador, independentemente do seletor interno. Após atualizar a extensão, recarregue as abas já abertas para atualizar os scripts de seleção e seus textos.
 
-O botão **Donate** mantém o estilo dark/roxo e abre `https://livepix.gg/zepoula` em uma nova aba com `noopener noreferrer`. O link não interfere em downloads e não inicia pagamento automaticamente; a contribuição é feita pelo usuário no site externo. A integração Premium/Mercado Pago permanece fora desta alteração.
+Na versão atual, o botão **Donate** mantém o estilo dark/roxo e abre o endereço configurado em `config.js` (`https://ko-fi.com/diogoskills`) em uma nova aba com `noopener noreferrer`. O link não interfere em downloads e não inicia pagamento automaticamente; a contribuição é feita pelo usuário no site externo. A integração Premium/Mercado Pago permanece fora desta alteração.
 
 `npm test` cobre fallback, persistência, mensagens parametrizadas e metadados nativos. `node tests/panel.cjs` verifica os três idiomas, preferência após recarregar, acessibilidade, preservação de nomes, layout estreito e destino da doação. `node tests/browser.cjs` verifica a troca de idioma do indicador na página e o cancelamento sem reinjeção; nesse cenário controlado, a shadow root da interface é aberta apenas pelo teste para inspecionar seu texto. As APIs Chrome continuam simuladas nesses testes.

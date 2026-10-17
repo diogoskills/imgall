@@ -199,7 +199,7 @@ const path=require('node:path');const http=require('node:http');const fs=require
   assert.equal(await page.locator('.download').textContent(),'Descargar imagen');
   assert.equal(await page.locator('#layout option[value="grid"]').textContent(),'Cuadrícula');
   assert.equal(await page.locator('#select span').first().textContent(),'Buscar imagen');
-  assert.equal(await page.locator('.donate').getAttribute('href'),'https://livepix.gg/zepoula');
+  assert.equal(await page.locator('.donate').getAttribute('href'),'https://ko-fi.com/diogoskills');
   assert.equal(await page.locator('.donate').getAttribute('target'),'_blank');
   assert.match(await page.locator('.donate').getAttribute('rel'),/noopener/);
   assert.equal(await page.locator('.donate').getAttribute('aria-label'),'Apoyar ClickImage (abre una pestaña nueva)');

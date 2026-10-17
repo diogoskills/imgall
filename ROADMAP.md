@@ -1,5 +1,13 @@
 # Roadmap do ClickImage
 
+## Entregue — 2.9
+
+- [x] Bibliotecas independentes com migração segura e nomes únicos nas importações.
+- [x] Grupos → Conjuntos → Itens, árvore expansível e organização de conjuntos.
+- [x] Destino de salvamento lembrado e feedback por cartão.
+- [x] ZIP fixo, marcar/desmarcar todas as pastas e seleção pai/filho sem ZIP repetido.
+- [x] JSON com arquivos incorporados, ZIP automático para backups maiores e leitura de backups legados.
+
 ## Entregue — 2.8
 
 - [x] Coleta temporária preservada e Biblioteca local permanente independente.
@@ -10,7 +18,7 @@
 
 ## Próximas validações
 
-- [ ] Homologar instalação, atualização sobre 2.7, janelas e downloads no Chrome desktop do usuário.
+- [ ] Homologar instalação, atualização sobre 2.8, janelas e downloads no Chrome desktop do usuário.
 - [ ] Validar salvamento nos sites reais com suas políticas de CORS e autenticação.
 - [ ] Avaliar formatos vetoriais na Biblioteca e exportação incremental de acervos acima de 128 MB, mantendo importações seguras.
 - [ ] Preparar revisão e publicação manual na Chrome Web Store; nenhuma publicação automática.

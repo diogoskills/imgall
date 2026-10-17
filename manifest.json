@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ClickImage",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "description": "__MSG_extensionDescription__",
   "permissions": [
     "activeTab",
@@ -30,5 +30,8 @@
   "side_panel": {
     "default_path": "panel.html"
   },
-  "default_locale": "pt_BR"
+  "default_locale": "pt_BR",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
+  }
 }

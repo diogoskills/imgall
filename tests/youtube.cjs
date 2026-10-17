@@ -12,13 +12,13 @@ const {chromium}=require('playwright');const assert=require('node:assert/strict'
   await page.evaluate(()=>{window.listeners=[];window.messages=[];window.chrome={runtime:{onMessage:{addListener:cb=>listeners.push(cb)},sendMessage:async msg=>{messages.push(msg);return {ok:true}}}}});
   await page.addScriptTag({path:path.join(root,'image-utils.js')});await page.addScriptTag({path:path.join(root,'content.js')});
   await page.evaluate(()=>listeners[0]({type:'CLICKIMAGE_ACTIVATE',token:'video'}));
-  await page.locator('#preview').hover();await page.locator('#preview').click();
+  await page.locator('#preview').hover({force:true});await page.locator('#preview').click({force:true});
   await page.waitForFunction(()=>messages.filter(msg=>msg.type==='CLICKIMAGE_PREVIEW').length===1);
   const video=await page.evaluate(()=>messages.find(msg=>msg.type==='CLICKIMAGE_PREVIEW'));
   assert.equal(video.url,`https://i.ytimg.com/vi/${id}/full.jpg`);
   assert.equal(video.format,'PNG'); // Bytes win over the misleading .jpg suffix.
   await page.evaluate(()=>document.querySelector('#preview').remove());
-  await page.locator('#animated').hover();await page.locator('#animated').click();
+  await page.locator('#animated').hover({force:true});await page.locator('#animated').click({force:true});
   await page.waitForFunction(()=>messages.filter(msg=>msg.type==='CLICKIMAGE_PREVIEW').length===2);
   assert.equal(await page.evaluate(()=>messages.filter(msg=>msg.type==='CLICKIMAGE_PREVIEW').at(-1).url),video.url);
   await page.evaluate(()=>listeners[0]({type:'CLICKIMAGE_CANCEL',silent:true}));
@@ -26,7 +26,7 @@ const {chromium}=require('playwright');const assert=require('node:assert/strict'
   assert.equal(await page.locator('html > div').count(),0);
   metadata=false;
   await page.evaluate(()=>{document.querySelector('#static').remove();document.querySelectorAll('script').forEach(script=>script.remove());listeners[0]({type:'CLICKIMAGE_ACTIVATE',token:'unavailable'})});
-  await page.locator('#animated').click();
+  await page.locator('#animated').click({force:true});
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('#animated')).cursor!=='crosshair');
   assert.equal(await page.evaluate(()=>messages.filter(msg=>msg.type==='CLICKIMAGE_PREVIEW').length),2);
   assert.deepEqual(errors,[]);

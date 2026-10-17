@@ -953,6 +953,133 @@
   "es": "Cancelado."
  }
 });
+ Object.assign(messages,{
+ "Nome da Biblioteca": {
+  "en": "Library name",
+  "es": "Nombre de la Biblioteca"
+ },
+ "Nova Biblioteca": {
+  "en": "New Library",
+  "es": "Nueva Biblioteca"
+ },
+ "Renomear Biblioteca": {
+  "en": "Rename Library",
+  "es": "Renombrar Biblioteca"
+ },
+ "Biblioteca não encontrada.": {
+  "en": "Library not found.",
+  "es": "Biblioteca no encontrada."
+ },
+ "Já existe uma Biblioteca com esse nome.": {
+  "en": "A Library with this name already exists.",
+  "es": "Ya existe una Biblioteca con ese nombre."
+ },
+ "Salva em “{name}” ({count} imagens).": {
+  "en": "Saved in “{name}” ({count} images).",
+  "es": "Guardada en “{name}” ({count} imágenes)."
+ },
+ "A imagem já está na pasta “{name}” ({count} imagens).": {
+  "en": "This image is already in “{name}” ({count} images).",
+  "es": "Esta imagen ya está en “{name}” ({count} imágenes)."
+ },
+ "BACKUP DA BIBLIOTECA": {
+  "en": "LIBRARY BACKUP",
+  "es": "COPIA DE LA BIBLIOTECA"
+ },
+ "Cada importação cria uma nova Biblioteca, preservando as existentes.": {
+  "en": "Each import creates a new Library, preserving existing ones.",
+  "es": "Cada importación crea una nueva Biblioteca y conserva las existentes."
+ },
+ "Biblioteca acima de 16 MB: usando ZIP com JSON e imagens para reduzir o uso de memória.": {
+  "en": "Library over 16 MB: using a ZIP with JSON and images to reduce memory use.",
+  "es": "Biblioteca de más de 16 MB: se usa un ZIP con JSON e imágenes para reducir el uso de memoria."
+ },
+ "Biblioteca “{name}” importada: {folders} pastas e {images} imagens. Indisponíveis: {failed}.": {
+  "en": "Library “{name}” imported: {folders} folders and {images} images. Unavailable: {failed}.",
+  "es": "Biblioteca “{name}” importada: {folders} carpetas y {images} imágenes. No disponibles: {failed}."
+ },
+ "A importação cria uma nova Biblioteca e preserva as existentes.": {
+  "en": "Import creates a new Library and preserves existing ones.",
+  "es": "La importación crea una nueva Biblioteca y conserva las existentes."
+ },
+ "Arquivo não incluído no backup.": {
+  "en": "File not included in the backup.",
+  "es": "Archivo no incluido en la copia."
+ },
+ "Backups JSON devem ter até 28 MB.": {
+  "en": "JSON backups must be up to 28 MB.",
+  "es": "Las copias JSON deben tener hasta 28 MB."
+ }
+});
+ Object.assign(messages,{
+ "GRUPOS": {
+  "en": "GROUPS",
+  "es": "GRUPOS"
+ },
+ "Novo grupo": {
+  "en": "New group",
+  "es": "Nuevo grupo"
+ },
+ "Novo conjunto": {
+  "en": "New set",
+  "es": "Nuevo conjunto"
+ },
+ "Nome do grupo": {
+  "en": "Group name",
+  "es": "Nombre del grupo"
+ },
+ "Nome do conjunto": {
+  "en": "Set name",
+  "es": "Nombre del conjunto"
+ },
+ "Expandir ou recolher grupo": {
+  "en": "Expand or collapse group",
+  "es": "Expandir o contraer grupo"
+ },
+ "Mover grupo ou conjunto": {
+  "en": "Move group or set",
+  "es": "Mover grupo o conjunto"
+ },
+ "Grupo de destino": {
+  "en": "Destination group",
+  "es": "Grupo de destino"
+ },
+ "Primeiro nível (grupo)": {
+  "en": "Top level (group)",
+  "es": "Primer nivel (grupo)"
+ },
+ "Crie conjuntos dentro de um grupo.": {
+  "en": "Create sets inside a group.",
+  "es": "Crea conjuntos dentro de un grupo."
+ },
+ "Pasta de destino inválida.": {
+  "en": "Invalid destination folder.",
+  "es": "Carpeta de destino inválida."
+ },
+ "Uma pasta não pode ficar dentro dela mesma ou de suas subpastas.": {
+  "en": "Groups cannot be nested inside themselves or their sets.",
+  "es": "Los grupos no pueden estar dentro de sí mismos ni de sus conjuntos."
+ },
+ "Excluir esta pasta, seus conjuntos e suas referências? As outras pastas serão preservadas.": {
+  "en": "Delete this folder, its sets and references? Other folders will be kept.",
+  "es": "¿Eliminar esta carpeta, sus conjuntos y referencias? Se conservarán las otras carpetas."
+ },
+ "Arquivos indisponíveis: {count}.": {
+  "en": "Unavailable files: {count}.",
+  "es": "Archivos no disponibles: {count}."
+ },
+ "Grupos incluem seus conjuntos no ZIP.": {
+  "en": "Groups include their sets in the ZIP.",
+  "es": "Los grupos incluyen sus conjuntos en el ZIP."
+ },
+ "Limite local: 50 Bibliotecas, 200 pastas, 5.000 imagens, 20.000 referências e 512 MB.": {
+  "en": "Local limit: 50 Libraries, 200 folders, 5,000 images, 20,000 references and 512 MB.",
+  "es": "Límite local: 50 Bibliotecas, 200 carpetas, 5.000 imágenes, 20.000 referencias y 512 MB."
+ }
+});
+ Object.assign(messages,{Grupo:{en:'Group',es:'Grupo'},Conjunto:{en:'Set',es:'Conjunto'}});
+ Object.assign(messages,{'A Biblioteca aceita imagens de até 64 megapixels e 32.768 px por lado. O download original continua disponível.':{en:'The Library supports images up to 64 megapixels and 32,768 px per side. The original download is still available.',es:'La Biblioteca admite imágenes de hasta 64 megapíxeles y 32.768 px por lado. La descarga original sigue disponible.'}});
+ Object.assign(messages,{'Seleção ativa · clique apenas em imagens · Parar seleção ou ESC para navegar':{en:'Selection active · click images only · Stop selection or ESC to browse',es:'Selección activa · haz clic solo en imágenes · Detener selección o ESC para navegar'}});
  const languages=['pt-BR','en','es'];let language='pt-BR';const listeners=new Set();
  function t(source,values={}){
   if(typeof source!=='string')return source || '';
@@ -972,7 +1099,7 @@
   try{await root.chrome?.storage?.local?.set({clickimageLanguage:language})}catch{throw new Error('Não foi possível salvar o idioma.')}
  }
  const originals=new WeakMap();
- const dynamic='#feedback,#batch-progress,#status-label,#count,#empty-title,#empty-description,#select,#download-all,.source,.dimensions,.item-status,.item-error,.download,.convert-png,#folder-title,#folders,#destination,#storage-usage,#folder-count,#library-feedback,#selection-count';
+ const dynamic='#feedback,#batch-progress,#status-label,#count,#empty-title,#empty-description,#select,#download-all,.source,.dimensions,.item-status,.item-error,.download,.convert-png,#folder-title,#folders,#destination,#storage-usage,#folder-count,#library-feedback,#selection-count,#library-picker,.library-save-status';
  function apply(scope){
   if(!scope)return;
   const document=scope.ownerDocument || scope;

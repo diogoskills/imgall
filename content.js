@@ -4,6 +4,8 @@
   globalThis.__clickImageInstalled = true;
   const utils = globalThis.ClickImageUtils;
   let disconnected = false;
+  const blockedPointerEvents=['pointerdown','pointerup','mousedown','mouseup','auxclick','dblclick','contextmenu','dragstart','drop','touchstart','touchend'];
+  const selectionHint='Seleção ativa · clique apenas em imagens · Parar seleção ou ESC para navegar';
   function setLabel(text){label._source=text;label.textContent=globalThis.ClickImageI18n?.t(text) || text}
   globalThis.ClickImageI18n?.onChange(()=>{if(label?.isConnected && label._source)setLabel(label._source)});
   // Chrome can throw synchronously before returning a Promise after reload.
@@ -41,18 +43,35 @@
     ui(); clearTimeout(timer); setLabel(text);
     timer = setTimeout(() => { if (!active && !resolving) host?.remove(); }, 4500);
   }
+  function hitStack(event){
+    const hit=[],roots=new Set();
+    function visit(root,depth){if(depth>8||roots.has(root)||hit.length>=200)return;roots.add(root);for(const element of root.elementsFromPoint(event.clientX,event.clientY).slice(0,100)){if(hit.length>=200)return;if(element.shadowRoot)visit(element.shadowRoot,depth+1);if(!hit.includes(element))hit.push(element)}}
+    visit(document,0);return hit;
+  }
+  function wheel(event){
+    if(!active||event.ctrlKey||event.metaKey)return;
+    event.stopImmediatePropagation();
+    const factor=event.deltaMode===1?16:event.deltaMode===2?innerHeight:1,dx=event.deltaX*factor,dy=event.deltaY*factor;
+    for(const target of hitStack(event)){
+      if(target===host)continue;
+      for(let element=target;element&&element!==document.documentElement;element=element.parentElement||element.getRootNode()?.host){
+        const style=getComputedStyle(element),canY=/auto|scroll/.test(style.overflowY)&&((dy>0&&element.scrollTop+element.clientHeight<element.scrollHeight)||(dy<0&&element.scrollTop>0)),canX=/auto|scroll/.test(style.overflowX)&&((dx>0&&element.scrollLeft+element.clientWidth<element.scrollWidth)||(dx<0&&element.scrollLeft>0));
+        if(canY||canX){event.preventDefault();if(canY)element.scrollTop+=dy;if(canX)element.scrollLeft+=dx;return}
+      }
+    }
+  }
   function candidate(event) {
     const path = event.composedPath();
     const pointed=path[0];
-    // Leave native controls functional even when their icon is an IMG.
-    if (path.some(el=>el instanceof Element && el.matches('button, input, select, textarea'))) return null;
+    // Control icons are never image selections; the interaction guard blocks their actions.
+    if (path.some(el=>el instanceof Element && el.matches('button, input, select, textarea, [contenteditable]'))) return null;
     if (pointed instanceof Element) {
       const youtube=utils.youtubeContext(pointed,document.baseURI,pointed.currentSrc || pointed.src);
       if (youtube) { const el=youtube.scope;return {el:pointed,url:utils.validateUrl(pointed.currentSrc || pointed.src,document.baseURI),rect:el.getBoundingClientRect()}; }
     }
-    const atPoint = document.elementsFromPoint(event.clientX, event.clientY);
+    const atPoint=hitStack(event);
     function inspect(el, imagesOnly = false) {
-      if (!(el instanceof Element) || el === host) return null;
+      if (!(el instanceof Element) || el === host || el.closest('button,input,select,textarea,[contenteditable]')) return null;
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0 || !visibleAtPoint(el, event.clientX, event.clientY)) return null;
       const style = getComputedStyle(el);
@@ -71,6 +90,7 @@
     // Hit-test like an element inspector: Instagram often targets a transparent
     // sibling overlay, so the IMG never appears in the event's composed path.
     for (const el of atPoint) {
+      if(el!==host && (el.matches('iframe,object,embed') || el.closest('button,input,select,textarea,[contenteditable]')))return null;
       const youtube=utils.youtubeContext(el,document.baseURI,el.currentSrc || el.src);
       if(youtube) return {el,url:utils.validateUrl(el.currentSrc || el.src,document.baseURI),rect:youtube.scope.getBoundingClientRect()};
       const image = inspect(el, true);
@@ -119,6 +139,7 @@
   function move(event) {
     if (resolving) return;
     selected = candidate(event);
+    if(host)host.style.setProperty('cursor',selected?'crosshair':'not-allowed','important');
     if (!selected) { box.style.display = 'none'; return; }
     const r = selected.rect;
     box.style.cssText = `display:block;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;pointer-events:none`;
@@ -128,6 +149,10 @@
     active = false;
     window.removeEventListener('pointermove', move, true);
     window.removeEventListener('click', click, true);
+    for(const type of blockedPointerEvents)window.removeEventListener(type,blockInteraction,true);
+    window.removeEventListener('keyup',blockKeyboard,true);
+    window.removeEventListener('wheel',wheel,true);
+    host?.style.setProperty('pointer-events','none','important');
     window.removeEventListener('keydown', key, true);
     window.removeEventListener('scroll', clearHighlight, true);
     window.removeEventListener('resize', clearHighlight, true);
@@ -135,13 +160,16 @@
     clearHighlight();
   }
   let cursorStyle;
+  function blockInteraction(event){if(!active)return;event.preventDefault();event.stopImmediatePropagation()}
+  function blockKeyboard(event){if(active&&!event.ctrlKey&&!event.metaKey&&event.key!=='Tab'&&event.key!=='Escape'){event.preventDefault();event.stopImmediatePropagation()}}
   function key(event) {
-    if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); deactivate(); feedback('Seleção cancelada.'); void notifyCancellation(token); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); deactivate(); feedback('Seleção cancelada.'); void notifyCancellation(token); }else blockKeyboard(event);
   }
   async function click(event) {
-    const target = candidate(event);
-    if (!target) return;
-    event.preventDefault(); event.stopImmediatePropagation();
+    if(!active)return;event.preventDefault();event.stopImmediatePropagation();
+    if(!event.isTrusted||event.button!==0)return;
+    const target=candidate(event);
+    if(!target){feedback(selectionHint);return;}
     if (resolving) return;
     const selectionToken = token;
     clearHighlight();
@@ -170,10 +198,17 @@
       if (resolving) { reply?.({ accepted: false }); feedback('Aguarde a busca da imagem selecionada.'); return; }
       if (active) { reply?.({ accepted: false }); deactivate(); feedback('Seleção cancelada.'); void notifyCancellation(token); return; }
       token = message.token; active = true; silentStopped=false; ui(); clearTimeout(timer);
-      setLabel('ClickImage ativo · clique em uma imagem · ESC cancela');
+      setLabel(selectionHint);
+      // Transparent shield also stops interaction with cross-origin media frames.
+      // Hit testing still examines the real page beneath the shield.
+      host.style.setProperty('pointer-events','auto','important');
+      host.style.setProperty('cursor','not-allowed','important');
       cursorStyle = document.createElement('style'); cursorStyle.textContent = '*{cursor:crosshair!important}'; document.documentElement.append(cursorStyle);
       window.addEventListener('pointermove', move, true);
       window.addEventListener('click', click, true);
+      for(const type of blockedPointerEvents)window.addEventListener(type,blockInteraction,{capture:true,passive:false});
+      window.addEventListener('keyup',blockKeyboard,true);
+      window.addEventListener('wheel',wheel,{capture:true,passive:false});
       window.addEventListener('keydown', key, true);
       window.addEventListener('scroll', clearHighlight, true);
       window.addEventListener('resize', clearHighlight, true);

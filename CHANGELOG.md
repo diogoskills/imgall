@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.9.0 — 2026-10-17
+
+- Seleção exclusiva de imagens: bloqueio de interações com links, áudio/vídeo, controles e iframes enquanto ativo; rolagem e Shadow DOM preservados, liberação por ESC/Parar seleção/fechamento do painel, cliques sintéticos ignorados.
+- Feedback de salvamento por imagem com destino/contagem, lembrança de Biblioteca/pasta e nomes iguais permitidos para conteúdos distintos. Investigação não reproduziu perda nas gravações da 2.8; regressão executa 2/5/10 imagens e 10 gravações simultâneas nas duas versões.
+- Organização Grupos → Conjuntos → Itens (imagens), árvore expansível, mover conjuntos e exclusão com confirmação; dados anteriores mantidos.
+- Selecionar/desmarcar todas as pastas e botão .ZIP fixo; grupos incluem conjuntos e não geram ZIPs repetidos quando pai/filho estão marcados.
+- Exportar/Importar Biblioteca visíveis; JSON v2 com Base64 até 16 MB, ZIP com JSON e originais acima disso. ZIPs v1 continuam importáveis.
+- Importação sempre cria uma Biblioteca independente, com nome único, sem substituir anteriores. Esquema IndexedDB 2 migra o acervo principal sem regravar imagens; arquivos idênticos são compartilhados entre Bibliotecas.
+- Limites de resolução para novos arquivos da Biblioteca (64 MP/32.768 px por lado), com inspeção antecipada de cabeçalhos raster comuns contra imagens de dimensões abusivas; download direto anterior preservado.
+- Revisão de segurança: CSP explícita bloqueia scripts remotos/inline, objetos e frames; nomes importados tratados como texto; URLs do backup ignoradas; testes de injeção e isolamento.
+- Validação de Base64, formatos, metadados, hashes, hierarquia e limites; importação atômica e relatório de arquivos explicitamente indisponíveis.
+- Donate atualizado para Ko-fi de diogoskills em config.js, mantendo o botão próprio e nenhuma dependência remota.
+- Documentação, traduções PT-BR/EN/ES e pacote de publicação 2.9.0 atualizados.
+
 ## 2.8.0 — 2026-10-17
 
 - Biblioteca permanente em janela independente: pastas, contagens, busca, Grade/Lista, seleção múltipla, mover, copiar, renomear e excluir referências.

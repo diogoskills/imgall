@@ -1,7 +1,8 @@
-// ClickImage backup v1: bounded ZIP STORE, validated before an atomic IDB restore.
+// Backup v2: JSON + Base64 for small libraries; ZIP STORE for larger ones.
+// Legacy v1 ZIPs remain importable. Restore always creates a separate library.
 (function(root){
  'use strict';
- const LIMIT=128*1024*1024,MAX_MANIFEST=4*1024*1024,MAX_ENTRIES=5001;
+ const LIMIT=128*1024*1024,MAX_MANIFEST=4*1024*1024,MAX_ENTRIES=5001,JSON_IMAGES=16*1024*1024,JSON_LIMIT=28*1024*1024;
  function invalid(){throw new Error('Backup inválido, corrompido ou de versão não suportada.');}
  function safePath(name){return typeof name==='string'&&name.length<=180&&!name.startsWith('/')&&!/[\\:\x00-\x1f]/.test(name)&&!name.split('/').some(p=>!p||p==='.'||p==='..')}
  function unpack(bytes){
@@ -25,43 +26,65 @@
   if(offset!==end||localEnd!==start)invalid();return files;
  }
  function timestamp(n){return Number.isSafeInteger(n)&&n>0?n:Date.now()}
- async function exportLibrary(onProgress=()=>{}){
-  const d=await root.ClickImageLibrary.backupData(),entries=[],images=[];
-  const assets=new Map(d.assets.map(a=>[a.id,a.blob]));let total=0;
+ function encodeBase64(bytes){let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary)}
+ function decodeBase64(text){
+  if(typeof text!=='string'||text.length>Math.ceil(root.ClickImageZip.MAX_FILE/3)*4||text.length%4||/[^A-Za-z0-9+/=]/.test(text))invalid();
+  const padding=text.indexOf('=');if(padding!==-1&&!/^={1,2}$/.test(text.slice(padding)))invalid();
+  let binary;try{binary=atob(text)}catch{invalid()}if(btoa(binary)!==text)invalid();return Uint8Array.from(binary,c=>c.charCodeAt(0));
+ }
+ async function exportLibrary(onProgress=()=>{},libraryId='main'){
+  const d=await root.ClickImageLibrary.backupData(libraryId),entries=[],images=[];
+  const assets=new Map(d.assets.map(a=>[a.id,a.blob])),json=d.images.reduce((n,i)=>n+i.sizeBytes,0)<=JSON_IMAGES;let total=0,failed=0;
   for(const image of d.images){
-   const blob=assets.get(image.id);if(!blob)throw new Error('O arquivo local está indisponível. Restaure um backup.');total+=blob.size;if(total>LIMIT)throw new Error('O backup aceita até 128 MB.');
+   const blob=assets.get(image.id);if(!blob){failed++;images.push({id:image.id,path:'images/'+image.id+'.'+root.ClickImageUtils.imageExtension(image.mime),mime:image.mime,format:image.format,sizeBytes:image.sizeBytes,width:image.width,height:image.height,createdAt:image.createdAt,unavailable:true,...(json?{encoding:'base64',data:null}:{})});onProgress({finished:images.length,total:d.images.length,failed});continue}total+=blob.size;if(total>LIMIT)throw new Error('O backup aceita até 128 MB.');
    const path='images/'+image.id+'.'+root.ClickImageUtils.imageExtension(image.mime),bytes=new Uint8Array(await blob.arrayBuffer());
-   entries.push({name:path,bytes});images.push({id:image.id,path,width:image.width,height:image.height,createdAt:image.createdAt});onProgress({finished:images.length,total:d.images.length});
+   const record=await root.ClickImageLibrary.prepare(bytes,{width:image.width,height:image.height});if(record.image.id!==image.id)invalid();
+   if(!json)entries.push({name:path,bytes});
+   images.push({id:image.id,path,mime:image.mime,format:image.format,sizeBytes:image.sizeBytes,width:image.width,height:image.height,createdAt:image.createdAt,...(json?{encoding:'base64',data:encodeBase64(bytes)}:{})});onProgress({finished:images.length,total:d.images.length,failed});
   }
-  // Source URLs are intentionally excluded: signed URLs can contain credentials.
-  const manifest={format:'clickimage-library',version:1,exportedAt:Date.now(),folders:d.folders,images,links:d.links};
-  const bytes=new TextEncoder().encode(JSON.stringify(manifest));if(bytes.length>MAX_MANIFEST)throw new Error('Metadados do backup excederam o limite.');entries.unshift({name:'manifest.json',bytes});
-  return root.ClickImageZip.archive(entries);
+  // Signed source URLs never enter backups. Names and memberships remain local metadata.
+  const manifest={format:'clickimage-library',version:2,library:{id:d.library.id,name:d.library.name},exportedAt:Date.now(),folders:d.folders.map(({id,name,parentId,createdAt})=>({id,name,parentId:parentId||null,createdAt})),images,links:d.links};
+  const metadata={...manifest,images:images.map(({data,...image})=>image)};
+  if(new TextEncoder().encode(JSON.stringify(metadata)).length>MAX_MANIFEST)throw new Error('Metadados do backup excederam o limite.');
+  const bytes=new TextEncoder().encode(JSON.stringify(manifest));
+  if(json){if(bytes.length>JSON_LIMIT)invalid();return new Blob([bytes],{type:'application/json'})}
+  entries.unshift({name:'manifest.json',bytes});return root.ClickImageZip.archive(entries);
  }
  async function validate(blob,onProgress=()=>{}){
   if(!blob || blob.size>LIMIT+MAX_MANIFEST+2*1024*1024)throw new Error('O backup excede o limite de 128 MB de imagens.');
-  const files=unpack(new Uint8Array(await blob.arrayBuffer()));let m;
-  try{m=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(files.get('manifest.json')))}catch{invalid()}
-  if(m?.format!=='clickimage-library'||m.version!==1||!Array.isArray(m.folders)||!Array.isArray(m.images)||!Array.isArray(m.links)||m.folders.length>200||m.images.length>5000||m.links.length>20000)invalid();
+  const head=new Uint8Array(await blob.slice(0,2).arrayBuffer()),isZip=head[0]===80&&head[1]===75;let files,m;
+  if(isZip){files=unpack(new Uint8Array(await blob.arrayBuffer()));try{m=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(files.get('manifest.json')))}catch{invalid()}}
+  else{if(blob.size>JSON_LIMIT)throw new Error('Backups JSON devem ter até 28 MB.');try{m=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await blob.arrayBuffer()))}catch{invalid()}}
+  if(m?.format!=='clickimage-library'||![1,2].includes(m.version)||(!isZip&&m.version!==2)||!Array.isArray(m.folders)||!Array.isArray(m.images)||!Array.isArray(m.links)||m.folders.length>200||m.images.length>5000||m.links.length>20000)invalid();
+  const name=m.version===1?'Minhas referências':root.ClickImageLibrary.libraryName(m.library?.name);
+  if(m.version===2&&(typeof m.library?.id!=='string'||!m.library.id||m.library.id.length>80))invalid();
   const folders=[],images=[],links=[],folderIds=new Set(),imageIds=new Set(),usedPaths=new Set(['manifest.json']),names=new Set();
-  for(const f of m.folders){if(!f||typeof f.id!=='string'||f.id.length>80||folderIds.has(f.id))invalid();const name=root.ClickImageLibrary.folderName(f.name);if(names.has(name.toLocaleLowerCase()))invalid();names.add(name.toLocaleLowerCase());folderIds.add(f.id);folders.push({id:f.id,name,createdAt:timestamp(f.createdAt)})}
-  let size=0;
+  for(const f of m.folders){
+   if(!f||typeof f.id!=='string'||!f.id||f.id.length>80||folderIds.has(f.id)||(f.parentId!==undefined&&f.parentId!==null&&(typeof f.parentId!=='string'||!f.parentId||f.parentId.length>80)))invalid();
+   const parentId=f.parentId||null,folderName=root.ClickImageLibrary.folderName(f.name),key=JSON.stringify([parentId,folderName.toLocaleLowerCase()]);if(names.has(key))invalid();names.add(key);folderIds.add(f.id);folders.push({id:f.id,name:folderName,parentId,createdAt:timestamp(f.createdAt)});
+  }
+  const byId=new Map(folders.map(f=>[f.id,f]));for(const folder of folders){const seen=new Set([folder.id]);let parent=folder.parentId;while(parent){if(seen.size>=2||!byId.has(parent)||seen.has(parent))invalid();seen.add(parent);parent=byId.get(parent).parentId}}
+  let size=0;const failures=[],unavailable=new Set();
   for(const image of m.images){
    if(!image||typeof image.id!=='string'||!/^[a-f0-9]{64}$/.test(image.id)||imageIds.has(image.id)||typeof image.path!=='string'||!new RegExp('^images/'+image.id+'\\.(jpg|png|webp|avif|gif|bmp|tif|ico)$').test(image.path)||usedPaths.has(image.path))invalid();
-   const bytes=files.get(image.path);if(!bytes)invalid();size+=bytes.length;if(size>LIMIT)invalid();
+   if(!isZip&&image.encoding!=='base64')invalid();
+   let bytes;if(isZip)bytes=files.get(image.path);else if(image.data!==null)bytes=decodeBase64(image.data);
+   if(!bytes){if(image.unavailable!==true)invalid();unavailable.add(image.id);imageIds.add(image.id);failures.push({id:image.id,error:'Arquivo não incluído no backup.'});continue}
+   size+=bytes.length;if(size>(isZip?LIMIT:JSON_IMAGES))invalid();
    const record=await root.ClickImageLibrary.prepare(bytes,{width:image.width,height:image.height,createdAt:timestamp(image.createdAt)});
-   if(record.image.id!==image.id||image.path!==`images/${image.id}.${root.ClickImageUtils.imageExtension(record.image.mime)}`)invalid();
+   if((m.version===2&&(image.mime!==record.image.mime||image.format!==record.image.format||image.sizeBytes!==bytes.length))||record.image.id!==image.id||image.path!==`images/${image.id}.${root.ClickImageUtils.imageExtension(record.image.mime)}`)invalid();
    imageIds.add(image.id);usedPaths.add(image.path);images.push(record);onProgress({finished:images.length,total:m.images.length});
   }
   const keys=new Set(),referenced=new Set();for(const link of m.links){
    if(!link||!folderIds.has(link.folderId)||!imageIds.has(link.imageId)||typeof link.title!=='string'||link.title.length>80)invalid();
-   const title=root.ClickImageUtils.safeTitle(link.title);if(!title)invalid();const key=JSON.stringify([link.folderId,link.imageId]);if(keys.has(key))continue;keys.add(key);referenced.add(link.imageId);links.push({folderId:link.folderId,imageId:link.imageId,title,createdAt:timestamp(link.createdAt)});
+   const title=root.ClickImageUtils.safeTitle(link.title);if(!title)invalid();if(unavailable.has(link.imageId)){const failure=failures.find(f=>f.id===link.imageId);if(failure)failure.name=title;continue}const key=JSON.stringify([link.folderId,link.imageId]);if(keys.has(key))continue;keys.add(key);referenced.add(link.imageId);links.push({folderId:link.folderId,imageId:link.imageId,title,createdAt:timestamp(link.createdAt)});
   }
-  if(files.size!==usedPaths.size||images.some(i=>!referenced.has(i.image.id)))invalid();return {folders,images,links};
+  if((isZip&&files.size!==usedPaths.size)||images.some(i=>!referenced.has(i.image.id)))invalid();return {name,folders,images,links,failures};
  }
- async function importLibrary(blob,{replace=false,confirmed=false,onProgress}={}){
-  if(replace&&!confirmed)throw new Error('A substituição exige confirmação explícita.');
-  const prepared=await validate(blob,onProgress);return root.ClickImageLibrary.restore(prepared,{replace});
+ async function importLibrary(blob,{onProgress,replace=false}={}){
+  if(replace)throw new Error('A importação cria uma nova Biblioteca e preserva as existentes.');
+  const prepared=await validate(blob,onProgress);return root.ClickImageLibrary.restore(prepared);
  }
+
  root.ClickImageBackup={exportLibrary,importLibrary,validate,unpack};
 })(globalThis);
