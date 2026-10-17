@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.11.0 — 2026-10-17
+
+- Leitura do ZIP/Biblioteca com permissões limitadas aos dois hosts de thumbnails do YouTube; fallback estático verificado para resoluções indisponíveis, com diagnóstico HTTP e distinção honesta entre leitura bloqueada e rede.
+- Individual reaproveita a leitura verificada do YouTube no worker, preservando a tentativa nativa quando só a leitura dos bytes falhar por CORS/rede. Outros sites mantêm suas permissões e comportamento anteriores.
+- Nomes centralizados, ZIP geral ClickImage.zip, ZIPs com nome da pasta e sufixos previsíveis; registro seguro de nomes de blobs no worker evita nomes derivados de UUID.
+- Abrir imagem em segundo plano nas duas interfaces e pelo botão do meio; zoom isolado mantido. Pasta automática na primeira imagem com escolha manual persistida e sincronizada.
+- Remoção completa de PNG Beta; arquivos PNG originais continuam disponíveis.
+- G — Grupo, C — Conjunto e S — Subgrupo sobre a mesma árvore/esquema IndexedDB 2. Conjuntos mostram cartões de pastas e recusam imagens diretas. Dados e backups anteriores preservados.
+- Menu com downloads individuais/ZIP do conteúdo direto ou árvore completa, avisos para grupos sem imagens e deduplicação compartilhada.
+- Marca existente organizada em assets, ícones derivados e favicon nas três páginas internas; fontes fora do pacote de publicação.
+- Testes, documentação, revisão de segurança e pacote atualizados; validação nativa no Chrome instalado permanece necessária.
+
 ## 2.10.0 — 2026-10-17
 
 - Biblioteca com exportação/importação explicitamente .json, validada no seletor e no conteúdo. A orientação JSON-only substitui a alternância automática para ZIP; JSON até 16 MB de imagens/28 MB de arquivo.

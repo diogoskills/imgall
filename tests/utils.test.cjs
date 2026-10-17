@@ -6,6 +6,8 @@ const u = require('../image-utils.js');
 test('Manifest V3 references existing resources and minimal permissions', () => {
   const m = JSON.parse(fs.readFileSync(require.resolve('../manifest.json')));
   assert.equal(m.manifest_version, 3);
+  assert.deepEqual(m.host_permissions,['https://i.ytimg.com/*','https://img.youtube.com/*']);
+  assert.equal(m.optional_host_permissions,undefined);
   assert.deepEqual(m.permissions, ['activeTab', 'scripting', 'downloads', 'sidePanel', 'storage']);
   for (const f of [m.background.service_worker, m.side_panel.default_path, 'panel.css', 'panel.js', ...Object.values(m.icons)]) assert.ok(fs.existsSync(require('node:path').join(__dirname, '..', f)));
 });
@@ -312,22 +314,10 @@ test('resource size uses total Content-Range, never the range Content-Length',as
  assert.equal(u.formatFileSize(4096),'4 KB');assert.equal(u.formatFileSize(2097152),'2 MB');
  assert.equal(u.formatFileSize(null),'Tamanho indisponível');
 });
-test('reverse search validates original URLs and PNG command rejects non-PNG payloads',()=>{
+test('reverse search validates original URLs',()=>{
  const sandbox={ClickImageUtils:u,module:{exports:{}}};vm.runInNewContext(fs.readFileSync(require.resolve('../panel-actions.js'),'utf8'),sandbox);const actions=sandbox.module.exports;
  const url='https://example.org/original.jpg?oh=signed&size=large';
  assert.equal(new URL(actions.reverseSearchURL(url)).searchParams.get('url'),url);
  assert.throws(()=>actions.reverseSearchURL('javascript:alert(1)'));
- assert.equal(actions.isPngDataURL('data:image/jpeg;base64,/9j/'),false);
- assert.equal(actions.isPngDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'),true);
-});
-test('converted PNG is an independent download and preserves original availability',async()=>{
- let listener;const calls=[],values={'clickimage:6':{status:'idle',items:[{id:'webp',url:'https://example.org/original.webp',format:'WEBP',status:'ready',title:'Foto'}]}};const noop={addListener:()=>{}};
- const sandbox={ClickImageUtils:u,module:{exports:{}}};vm.runInNewContext(fs.readFileSync(require.resolve('../panel-actions.js'),'utf8'),sandbox);
- const chrome={runtime:{id:'ext',getURL:f=>'chrome-extension://ext/'+f,onMessage:{addListener:cb=>listener=cb}},storage:{session:{get:async key=>structuredClone({[key]:values[key]}),set:async obj=>Object.assign(values,structuredClone(obj))}},action:{onClicked:noop},tabs:{onRemoved:noop},downloads:{onChanged:noop,onDeterminingFilename:noop,download:async options=>{calls.push(options);return 7},search:async()=>[{id:7,state:'complete'}]}};
- vm.runInNewContext(fs.readFileSync(require.resolve('../background.js'),'utf8'),{chrome,importScripts:()=>{},ClickImageUtils:u,ClickImageActions:sandbox.module.exports});
- const send=message=>new Promise(resolve=>listener({type:'CLICKIMAGE_CONFIRM_PNG',tabId:6,itemId:'webp',title:'Minha foto',...message},{id:'ext',url:'chrome-extension://ext/panel.html'},resolve));
- assert.equal((await send({dataURL:'data:text/html,wrong'})).ok,false);
- assert.equal((await send({dataURL:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'})).ok,true);
- assert.equal(calls[0].filename,'Minha foto.png');assert.equal(values['clickimage:6'].items[0].status,'ready');assert.equal(values['clickimage:6'].items[0].pngStatus,'downloaded');
- assert.equal((await send({dataURL:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'})).ok,false);assert.equal(calls.length,1);
+
 });

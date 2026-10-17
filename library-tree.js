@@ -1,6 +1,8 @@
 // Pure hierarchy/selection helpers shared by storage, UI and export.
 (function(root){
  'use strict';const MAX_DEPTH=32;
+ const kind=f=>['collection','group','subgroup'].includes(f?.kind)?f.kind:(f?.parentId?'subgroup':'group');
+ const acceptsImages=f=>kind(f)!=='collection';
  const folderKey=id=>'f:'+id,imageKey=(folderId,id)=>'i:'+folderId+':'+id;
  function descendants(folders,id){const result=new Set([id]);let changed=true;while(changed){changed=false;for(const f of folders)if(f.parentId&&result.has(f.parentId)&&!result.has(f.id)){result.add(f.id);changed=true}}return result}
  function ancestors(folders,id){const byId=new Map(folders.map(f=>[f.id,f])),path=[],seen=new Set();let current=byId.get(id);while(current){if(seen.has(current.id)||path.length>=MAX_DEPTH)throw Error('Hierarquia inválida ou acima de 32 níveis.');seen.add(current.id);path.unshift(current);current=current.parentId?byId.get(current.parentId):null}return path}
@@ -15,5 +17,5 @@
   for(const id of path)if(next.has(folderKey(id))&&(target.imageId||id!==targetFolder)){next.delete(folderKey(id));complement(id)}
   next.delete(target.imageId?imageKey(targetFolder,target.imageId):folderKey(targetFolder));return next;
  }
- root.ClickImageTree={MAX_DEPTH,subtract,folderKey,imageKey,descendants,ancestors,validate,roots,ordered,effective,flatten,toggle};if(typeof module!=='undefined')module.exports=root.ClickImageTree;
+ root.ClickImageTree={kind,acceptsImages,MAX_DEPTH,subtract,folderKey,imageKey,descendants,ancestors,validate,roots,ordered,effective,flatten,toggle};if(typeof module!=='undefined')module.exports=root.ClickImageTree;
 })(globalThis);

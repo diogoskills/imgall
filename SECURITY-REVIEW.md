@@ -1,4 +1,4 @@
-# Revisão de segurança — ClickImage 2.10.0
+# Revisão de segurança — ClickImage 2.11.0
 
 Escopo: código da extensão, importação/exportação de Bibliotecas, armazenamento local e modo de seleção. Esta é uma revisão de implementação com testes automatizados, não uma auditoria independente do navegador.
 
@@ -38,3 +38,13 @@ A extensão não executa JavaScript, HTML, SVG ou comandos encontrados no backup
 A árvore tem limite de 32 níveis e valida pais/ciclos. A limpeza total só executa após confirmação APAGAR na interface; o arquivo importado não controla essa operação. IDs novos no estado inicial impedem salvamentos antigos em trânsito de atingir a pasta removida.
 
 Testes relacionados: `npm test`, `tests/library.cjs`, `tests/library-storage.cjs`, `tests/selection-guard.cjs` e regressões do painel/seletor/YouTube/social.
+
+## Leitura e tipos de pastas na 2.11
+
+As novas permissões de host limitam-se a `https://i.ytimg.com/*` e `https://img.youtube.com/*`. Os outros hosts não recebem autorização global; não há proxy externo. Fallback usa apenas nomes estáticos conhecidos no mesmo vídeo/host, preserva os parâmetros e exige resposta/bytes válidos. 401/403 não provocam tentativas de versões alternativas; falha CORS/rede não é relatada falsamente como arquivo inexistente. O individual pode continuar usando a API nativa quando a leitura para ZIP for indisponível.
+
+O registro de nomes de blobs aceita somente mensagens da origem da extensão vindas de `panel.html` e `library.html`, com blob da própria extensão e nome sem caminhos/caracteres inválidos. O registro fica em storage.session, expira e é removido após a operação. O gancho de nomes só atua nos downloads iniciados por esta extensão. Não concede execução, escrita arbitrária ou acesso a dados de outros perfis.
+
+`kind` só aceita collection/group/subgroup na criação e na importação. Conjuntos não podem receber links diretos por salvamento, movimentação ou restauração; mudanças inválidas abortam a transação. Dados sem tipo continuam sendo lidos sem migração destrutiva. O ZIP e o JSON incluem esse campo opcional para reconstrução; nomes importados continuam sendo texto e URLs não são obtidas.
+
+As mensagens de CDN, APIs Chrome e gancho de download foram testadas com respostas/APIs simuladas; o Chromium desta máquina não disponibilizou carregamento nativo da extensão. Concessão efetiva de host, downloads nativos e nomes finais no Chrome instalado continuam como homologação manual documentada.

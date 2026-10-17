@@ -22,12 +22,20 @@
   let result=name,index=2;while(used.has(result.normalize('NFC').toLowerCase()))result=`${base} (${index++})${extension}`;
   used.add(result.normalize('NFC').toLowerCase());return result;
  }
- async function readImage(url,signal,budget){
+ function youtubeThumbnail(raw){const url=root.ClickImageUtils.validateUrl(raw);if(!url)return null;const u=new URL(url),match=/^\/(vi|vi_webp)\/([A-Za-z0-9_-]{11})\/(maxresdefault|sddefault|hqdefault|mqdefault|default)\.(jpg|webp)$/.exec(u.pathname);return u.protocol==='https:'&&['i.ytimg.com','img.youtube.com'].includes(u.hostname)&&!u.port&&match?{url:u,match}:null}
+ function httpError(status){const error=new Error(status===404||status===410?'Imagem não encontrada (HTTP '+status+').':status===401?'Autenticação necessária (HTTP 401).':status===403?'Acesso negado pelo site (HTTP 403).':'Falha do servidor (HTTP '+status+').');error.status=status;return error}
+ async function readImage(url,signal,budget=MAX_FILE){
+  if(!root.ClickImageUtils.validateUrl(url))throw Error('URL de imagem inválida.');
+  const youtube=youtubeThumbnail(url),variants=['maxresdefault','sddefault','hqdefault','mqdefault','default'];
+  const urls=youtube?variants.slice(variants.indexOf(youtube.match[3])).map(variant=>{const next=new URL(youtube.url);next.pathname='/'+youtube.match[1]+'/'+youtube.match[2]+'/'+variant+'.'+youtube.match[4];return next.href}):[url];
+  let failure;for(const candidate of urls){try{const resource=await readResource(candidate,signal,budget);if(youtube&&(root.ClickImageUtils.formatFromBytes(resource.bytes.subarray(0,64))==='GIF'||(String.fromCharCode(...resource.bytes.subarray(12,16))==='VP8X'&&(resource.bytes[20]&2)))){const e=Error('Prévia animada não é uma thumbnail estática.');e.status=404;throw e}if(youtube&&typeof createImageBitmap==='function'){let bitmap;try{bitmap=await createImageBitmap(new Blob([resource.bytes],{type:resource.mime}));const variant=youtubeThumbnail(candidate).match[3];if(['maxresdefault','sddefault'].includes(variant)&&bitmap.width<480){const e=Error('Prévia indisponível nesta resolução.');e.status=404;throw e}}finally{bitmap?.close()}}return resource}catch(error){if(!youtube||![404,410].includes(error.status))throw error;failure=error}}throw failure;
+ }
+ async function readResource(url,signal,budget){
   const abort=new AbortController(),cancel=()=>abort.abort();signal?.addEventListener('abort',cancel,{once:true});
   if(signal?.aborted)cancel();const timer=setTimeout(cancel,20000);let reader;
   try{
    const response=await fetch(url,{signal:abort.signal,credentials:'same-origin'});
-   if(!response.ok || !response.body)throw new Error('O site não permitiu obter o arquivo.');
+   if(!response.ok)throw httpError(response.status);if(!response.body)throw Error('O site retornou um arquivo vazio.');
    if(!root.ClickImageUtils.validateUrl(response.url || url))throw new Error('Redirecionamento inválido.');
    const limit=Math.min(MAX_FILE,budget);
    if(Number(response.headers.get('content-length'))>limit)throw new Error('Limite de tamanho do ZIP excedido.');
@@ -41,8 +49,8 @@
    const mime=({JPG:'image/jpeg',PNG:'image/png',WEBP:'image/webp',AVIF:'image/avif',GIF:'image/gif',BMP:'image/bmp',ICO:'image/x-icon',TIF:'image/tiff'})[format] || response.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
    if(!total || !root.ClickImageUtils.imageExtension(mime) || (!format && mime!=='image/svg+xml'))throw new Error('O recurso recebido não é uma imagem reconhecida.');
    if(!format && !/<svg[\s>]/i.test(new TextDecoder().decode(bytes.subarray(0,4096))))throw new Error('SVG inválido.');
-   return {bytes,mime};
-  }catch(error){if(signal?.aborted)throw new DOMException('ZIP cancelado.','AbortError');if(error.name==='AbortError')throw new Error('Tempo de leitura excedido.');if(error.name==='TypeError')throw new Error('Leitura bloqueada pelo site (CORS ou rede).');throw error}
+   return {bytes,mime,url:response.url||url};
+  }catch(error){if(signal?.aborted)throw new DOMException('ZIP cancelado.','AbortError');if(error.name==='AbortError')throw new Error('Tempo de leitura excedido.');if(error.name==='TypeError'){const failure=new Error(root.navigator?.onLine===false?'Sem conexão com a internet.':'Não foi possível ler a imagem: falha de rede ou permissão de leitura (CORS). O navegador não informa qual das duas ocorreu. O download individual pode funcionar.');failure.code='READ_UNAVAILABLE';throw failure;}throw error}
   finally{clearTimeout(timer);signal?.removeEventListener('abort',cancel);if(reader)await reader.cancel().catch(()=>{})}
  }
  async function build(items,{signal,onProgress=()=>{}}={}){
@@ -62,6 +70,6 @@
   if(!entries.length)throw new Error('Nenhuma imagem pôde ser obtida para o ZIP. '+(failures[0]?.error || ''));
   return {blob:archive(entries),included:entries.length,failures};
  }
- root.ClickImageZip={build,archive,crc32,uniqueName,readImage,MAX_FILE,MAX_TOTAL};
+ root.ClickImageZip={build,archive,crc32,uniqueName,readImage,youtubeThumbnail,MAX_FILE,MAX_TOTAL};
  if(typeof module!=='undefined')module.exports=root.ClickImageZip;
 })(globalThis);

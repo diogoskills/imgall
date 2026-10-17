@@ -32,7 +32,7 @@
   const api=Object.fromEntries(stores.map(name=>[name,tx.objectStore(name)]));
   try{const result=await fn(api);await done;if(mode==='readwrite')await notify();return result}catch(error){try{tx.abort()}catch{}await done.catch(()=>{});throw storageError(error)}
  }
- async function data(api){const [libraries,folders,images,links]=await Promise.all(['libraries','folders','images','links'].map(name=>request(api[name].getAll())));return {libraries,folders,images,links}}
+ async function data(api){const [libraries,folders,images,links]=await Promise.all(['libraries','folders','images','links'].map(name=>request(api[name].getAll())));return {libraries,folders:folders.map(f=>({...f,kind:T.kind(f)})),images,links}}
  function folderName(raw){const name=typeof raw==='string'?raw.trim().normalize('NFC'):'';if(!name || name.length>80 || /[\x00-\x1f]/.test(name))throw new Error('Digite um nome de pasta de até 80 caracteres.');return name}
  const descendants=T.descendants;
  function requireFolder(d,id){if(!d.folders.some(f=>f.id===id))throw new Error('Pasta não encontrada.');}
@@ -44,7 +44,7 @@
  function requireLibrary(d,id){if(!d.libraries.some(l=>l.id===id))throw new Error('Biblioteca não encontrada.');}
  async function createLibrary(name){name=libraryName(name);return transaction('readwrite',async api=>{const d=await data(api),library={id:crypto.randomUUID(),name:uniqueLibraryName(name,d.libraries),createdAt:Date.now()};d.libraries.push(library);const f={id:crypto.randomUUID(),libraryId:library.id,parentId:null,name:'Minhas referências',createdAt:Date.now()};d.folders.push(f);limits(d);api.libraries.put(library);api.folders.put(f);return library})}
  async function renameLibrary(id,name){name=libraryName(name);return transaction('readwrite',async api=>{const d=await data(api);requireLibrary(d,id);if(d.libraries.some(l=>l.id!==id&&l.name.toLocaleLowerCase()===name.toLocaleLowerCase()))throw new Error('Já existe uma Biblioteca com esse nome.');api.libraries.put({...d.libraries.find(l=>l.id===id),name})})}
- async function createFolder(name,libraryId=MAIN,parentId=null){name=folderName(name);return transaction('readwrite',async api=>{const d=await data(api);requireLibrary(d,libraryId);if(parentId){requireFolder(d,parentId);if(d.folders.find(f=>f.id===parentId).libraryId!==libraryId)throw new Error('Pasta de destino inválida.')}if(d.folders.some(f=>f.libraryId===libraryId&&(f.parentId||null)===parentId&&f.name.toLocaleLowerCase()===name.toLocaleLowerCase()))throw new Error('Já existe uma pasta com esse nome.');const folder={id:crypto.randomUUID(),name,libraryId,parentId,createdAt:Date.now()};d.folders.push(folder);T.validate(d.folders);limits(d);api.folders.put(folder);return folder})}
+ async function createFolder(name,libraryId=MAIN,parentId=null,kind=parentId?'subgroup':'group'){name=folderName(name);if(!['collection','group','subgroup'].includes(kind))throw Error('Tipo de pasta inválido.');return transaction('readwrite',async api=>{const d=await data(api);requireLibrary(d,libraryId);if(parentId){requireFolder(d,parentId);if(d.folders.find(f=>f.id===parentId).libraryId!==libraryId)throw new Error('Pasta de destino inválida.')}if(d.folders.some(f=>f.libraryId===libraryId&&(f.parentId||null)===parentId&&f.name.toLocaleLowerCase()===name.toLocaleLowerCase()))throw new Error('Já existe uma pasta com esse nome.');const folder={id:crypto.randomUUID(),name,libraryId,parentId,kind,createdAt:Date.now()};d.folders.push(folder);T.validate(d.folders);limits(d);api.folders.put(folder);return folder})}
  async function renameFolder(id,name){name=folderName(name);return transaction('readwrite',async api=>{const d=await data(api);requireFolder(d,id);const folder=d.folders.find(f=>f.id===id);if(d.folders.some(f=>f.id!==id&&f.libraryId===folder.libraryId&&(f.parentId||null)===(folder.parentId||null)&&f.name.toLocaleLowerCase()===name.toLocaleLowerCase()))throw new Error('Já existe uma pasta com esse nome.');api.folders.put({...folder,name})})}
  async function moveFolder(id,parentId=null){return moveItems({folderIds:[id],parentId})}
  async function deleteFolders(ids){return deleteItems({folderIds:ids})}
@@ -58,7 +58,7 @@
    if(!roots.length&&!refs.length)throw Error('Selecione itens para agrupar.');
    const containers=[...roots.map(f=>f.parentId),...refs.map(r=>r.folderId)],paths=containers.map(id=>id?T.ancestors(folders,id).map(f=>f.id):[]);let common=[];
    for(let i=0;i<(paths[0]?.length||0);i++){if(paths.every(path=>path[i]===paths[0][i]))common.push(paths[0][i]);else break}
-   const parentId=common.at(-1)||null,group={id:crypto.randomUUID(),libraryId,parentId,name,createdAt:Date.now(),order:folders.filter(f=>(f.parentId||null)===parentId).length};
+   const parentId=common.at(-1)||null,group={id:crypto.randomUUID(),libraryId,parentId,name,kind:'group',createdAt:Date.now(),order:folders.filter(f=>(f.parentId||null)===parentId).length};
    d.folders.push(group);const selectedOrder=folderIds.filter(id=>roots.some(f=>f.id===id));
    for(const f of roots){f.parentId=group.id;f.order=selectedOrder.indexOf(f.id);api.folders.put(f)}
    api.folders.put(group);let order=0;const used=new Set();for(const r of imageRefs){const link=refs.find(l=>l.folderId===r.folderId&&l.imageId===r.imageId);if(!link)continue;api.links.delete([link.folderId,link.imageId]);d.links=d.links.filter(l=>l!==link);if(!used.has(link.imageId)){const next={...link,folderId:group.id,order:order++};d.links.push(next);api.links.put(next);used.add(link.imageId)}}
@@ -78,6 +78,7 @@
   for(const f of roots){if(destination&&destination.libraryId!==f.libraryId)throw Error('Pasta de destino inválida.');f.parentId=parentId||null;f.order=d.folders.filter(other=>other.parentId===parentId).length;api.folders.put(f)}
   const refs=d.links.filter(l=>!covered.has(l.folderId)&&imageRefs.some(r=>r.folderId===l.folderId&&r.imageId===l.imageId));
   if(refs.length&&!destination)throw Error('Escolha uma pasta para as imagens.');
+  if(refs.length&&!T.acceptsImages(destination))throw Error('Conjuntos organizam pastas e não recebem imagens. Escolha um Grupo ou Subgrupo.');
   for(const link of refs){if(d.folders.find(f=>f.id===link.folderId).libraryId!==destination.libraryId)throw Error('Pasta de destino inválida.');if(!d.links.some(l=>l.folderId===parentId&&l.imageId===link.imageId)){const next={...link,folderId:parentId};d.links.push(next);api.links.put(next)}if(!copy&&link.folderId!==parentId){api.links.delete([link.folderId,link.imageId]);d.links=d.links.filter(l=>l!==link)}}
   T.validate(d.folders);limits(d);
  })}
@@ -114,10 +115,11 @@
   return {image:{id,format,mime,sizeBytes:bytes.length,width:Number.isSafeInteger(width)&&width>0&&width<=100000?width:0,height:Number.isSafeInteger(height)&&height>0&&height<=100000?height:0,url:root.ClickImageUtils.validateUrl(url)||'',createdAt:Number.isSafeInteger(createdAt)&&createdAt>0?createdAt:Date.now()},asset:{id,blob:new Blob([bytes],{type:mime})},title:root.ClickImageUtils.safeTitle(title)||'Imagem'};
  }
  async function saveImage(folderId,item,{signal}={}){
+  const destination=await snapshot();requireFolder(destination,folderId);if(!T.acceptsImages(destination.folders.find(f=>f.id===folderId)))throw Error('Conjuntos organizam pastas e não recebem imagens. Escolha um Grupo ou Subgrupo.');
   const resource=await root.ClickImageZip.readImage(item.url,signal,root.ClickImageZip.MAX_FILE);
-  const prepared=await prepare(resource.bytes,item);
+  const prepared=await prepare(resource.bytes,{...item,url:resource.url||item.url,title:item.title||root.ClickImageUtils.filename(item.url)});
   if(signal?.aborted)throw new DOMException('Cancelado.','AbortError');
-  return transaction('readwrite',async api=>{const d=await data(api);requireFolder(d,folderId);if(d.links.some(l=>l.folderId===folderId&&l.imageId===prepared.image.id))return {duplicate:true,imageId:prepared.image.id,folderId,folderName:d.folders.find(f=>f.id===folderId).name,count:d.links.filter(l=>l.folderId===folderId).length};if(!d.images.some(i=>i.id===prepared.image.id)){d.images.push(prepared.image);limits(d);api.images.put(prepared.image);api.assets.put(prepared.asset)}const link={folderId,imageId:prepared.image.id,title:prepared.title,createdAt:Date.now()};d.links.push(link);limits(d);api.links.put(link);return {duplicate:false,imageId:prepared.image.id,folderId,folderName:d.folders.find(f=>f.id===folderId).name,count:d.links.filter(l=>l.folderId===folderId).length}});
+  return transaction('readwrite',async api=>{const d=await data(api);requireFolder(d,folderId);if(!T.acceptsImages(d.folders.find(f=>f.id===folderId)))throw Error('Conjuntos organizam pastas e não recebem imagens. Escolha um Grupo ou Subgrupo.');if(d.links.some(l=>l.folderId===folderId&&l.imageId===prepared.image.id))return {duplicate:true,imageId:prepared.image.id,folderId,folderName:d.folders.find(f=>f.id===folderId).name,count:d.links.filter(l=>l.folderId===folderId).length};if(!d.images.some(i=>i.id===prepared.image.id)){d.images.push(prepared.image);limits(d);api.images.put(prepared.image);api.assets.put(prepared.asset)}const link={folderId,imageId:prepared.image.id,title:prepared.title,createdAt:Date.now()};d.links.push(link);limits(d);api.links.put(link);return {duplicate:false,imageId:prepared.image.id,folderId,folderName:d.folders.find(f=>f.id===folderId).name,count:d.links.filter(l=>l.folderId===folderId).length}});
  }
  async function getBlob(id){return transaction('readonly',async api=>{const record=await request(api.assets.get(id));if(!record?.blob)throw new Error('O arquivo local está indisponível. Restaure um backup.');return record.blob})}
  async function renameImage(folderId,imageId,title){title=root.ClickImageUtils.safeTitle(title);if(!title)throw new Error('Digite um nome válido.');return transaction('readwrite',async api=>{const link=await request(api.links.get([folderId,imageId]));if(!link)throw new Error('Imagem removida.');api.links.put({...link,title})})}
@@ -125,7 +127,7 @@
  async function transfer(from,to,ids,move){return moveItems({imageRefs:ids.map(imageId=>({folderId:from,imageId})),parentId:to,copy:!move})}
  async function backupData(libraryId=MAIN,selection=null){return transaction('readonly',async api=>{
   const d=await data(api);requireLibrary(d,libraryId);const library=d.libraries.find(l=>l.id===libraryId);let folders=d.folders.filter(f=>f.libraryId===libraryId),links=d.links.filter(l=>folders.some(f=>f.id===l.folderId));
-  if(selection){const covered=new Set((selection.folderIds||[]).flatMap(id=>folders.some(f=>f.id===id)?[...descendants(folders,id)]:[])),refs=selection.imageRefs||[];links=links.filter(l=>covered.has(l.folderId)||refs.some(r=>r.folderId===l.folderId&&r.imageId===l.imageId));const kept=new Set(covered);for(const link of links)if(!covered.has(link.folderId))for(const f of T.ancestors(folders,link.folderId))kept.add(f.id);folders=folders.filter(f=>kept.has(f.id)).map(f=>({...f,parentId:kept.has(f.parentId)?f.parentId:null}))}
+  if(selection){const covered=new Set((selection.folderIds||[]).flatMap(id=>folders.some(f=>f.id===id)?[...descendants(folders,id)]:[])),direct=new Set(selection.directFolderIds||[]),refs=selection.imageRefs||[];links=links.filter(l=>covered.has(l.folderId)||direct.has(l.folderId)||refs.some(r=>r.folderId===l.folderId&&r.imageId===l.imageId));const kept=new Set([...covered,...direct]);for(const link of links)if(!covered.has(link.folderId)&&!direct.has(link.folderId))for(const f of T.ancestors(folders,link.folderId))kept.add(f.id);folders=folders.filter(f=>kept.has(f.id)).map(f=>({...f,parentId:kept.has(f.parentId)?f.parentId:null}))}
   const ids=new Set(links.map(l=>l.imageId)),images=d.images.filter(i=>ids.has(i.id));
   if(images.reduce((n,i)=>n+i.sizeBytes,0)>root.ClickImageZip.MAX_TOTAL)throw new Error('O backup aceita até 128 MB. Exporte pastas separadamente para guardar as imagens.');
   const assets=await Promise.all(images.map(i=>request(api.assets.get(i.id))));return {library,folders,images,links,assets:assets.filter(Boolean)};
@@ -137,11 +139,11 @@
    d.libraries.push(library);api.libraries.put(library);
    const folderMap=new Map();let folderCount=0,imageCount=0;
    for(const folder of prepared.folders)folderMap.set(folder.id,crypto.randomUUID());
-   for(const folder of prepared.folders){const next={id:folderMap.get(folder.id),libraryId:library.id,parentId:folder.parentId?folderMap.get(folder.parentId):null,name:folder.name,createdAt:folder.createdAt,order:folder.order};d.folders.push(next);api.folders.put(next);folderCount++}
+   for(const folder of prepared.folders){const next={id:folderMap.get(folder.id),libraryId:library.id,parentId:folder.parentId?folderMap.get(folder.parentId):null,kind:T.kind(folder),name:folder.name,createdAt:folder.createdAt,order:folder.order};d.folders.push(next);api.folders.put(next);folderCount++}
    for(const record of prepared.images){if(!d.images.some(i=>i.id===record.image.id)){d.images.push(record.image);api.images.put(record.image)}api.assets.put(record.asset)}
    for(const link of prepared.links){const next={...link,folderId:folderMap.get(link.folderId)};if(d.links.some(l=>l.folderId===next.folderId&&l.imageId===next.imageId))continue;d.links.push(next);api.links.put(next);imageCount++}
    if(!prepared.folders.length){const f={id:crypto.randomUUID(),libraryId:library.id,parentId:null,name:'Minhas referências',createdAt:Date.now()};d.folders.push(f);api.folders.put(f);folderCount++}
-   T.validate(d.folders);limits(d);return {libraryId:library.id,name:library.name,folders:folderCount,images:imageCount,failed:prepared.failures?.length||0,failures:prepared.failures||[]};
+   T.validate(d.folders);if(d.links.some(l=>!T.acceptsImages(d.folders.find(f=>f.id===l.folderId))))throw Error('Conjuntos não podem conter imagens diretamente.');limits(d);return {libraryId:library.id,name:library.name,folders:folderCount,images:imageCount,failed:prepared.failures?.length||0,failures:prepared.failures||[]};
   });
  }
 

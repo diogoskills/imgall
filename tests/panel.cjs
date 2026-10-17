@@ -45,20 +45,11 @@ const path=require('node:path');const http=require('node:http');const fs=require
   await page.locator('#select').click();
   assert.equal(await page.locator('#select').getAttribute('aria-pressed'),'false');
   assert.equal(await page.locator('#select').evaluate(el=>getComputedStyle(el).backgroundImage),normalBackground);
-  const conversion=await page.evaluate(async base=>{
-    const response=await fetch(base+'/icons/128.png');const bitmap=await createImageBitmap(await response.blob());
-    const canvas=new OffscreenCanvas(bitmap.width,bitmap.height);canvas.getContext('2d').drawImage(bitmap,0,0);bitmap.close();
-    const webp=await canvas.convertToBlob({type:'image/webp'});const blobURL=URL.createObjectURL(webp);
-    const saved=window.fetch;window.fetch=async url=>url===base+'/webp-fixture'?new Response(webp):saved(url);
-    try{const result=await ClickImageActions.convertWebpToPng(base+'/webp-fixture');const png=await saved(result.dataURL);return {width:result.width,height:result.height,format:ClickImageUtils.formatFromBytes(new Uint8Array(await (await png.blob()).slice(0,64).arrayBuffer()))};}
-    finally{window.fetch=saved;URL.revokeObjectURL(blobURL)}
-  },base);
-  assert.deepEqual(conversion,{width:128,height:128,format:'PNG'});
-  const rejected=await page.evaluate(async base=>{try{await ClickImageActions.convertWebpToPng(base+'/icons/128.png');return false}catch{return true}},base);
-  assert.equal(rejected,true);
   const item={id:'first',url:base+'/icons/128.png',filename:'128.png',title:'',status:'ready'};
   await page.evaluate(item=>setPanelState({status:'idle',items:[item]}),item);
   await page.waitForFunction(()=>document.querySelector('.dimensions').textContent.includes('128 × 128 px'));
+  assert.equal(await page.locator('#gallery').isVisible(),true);assert.equal(await page.locator('#gallery-toggle').getAttribute('aria-pressed'),'true');await page.locator('#gallery-toggle').click();assert.equal(await page.evaluate(()=>localPreferences.clickimageGalleryChoice),false);assert.equal(await page.locator('.convert-png').count(),0);
+
   assert.equal(await page.locator('#select').isEnabled(),true);
   await page.locator('.copy-url').click();assert.equal(await page.evaluate(()=>copiedURL),item.url);
   await page.locator('.reverse-search').click();assert.equal(new URL(await page.evaluate(()=>searchURL)).searchParams.get('url'),item.url);
@@ -88,7 +79,7 @@ const path=require('node:path');const http=require('node:http');const fs=require
   assert.equal(await page.locator('#image-list').evaluate(el=>el.classList.contains('has-scroll')),false);
   assert.equal(await page.locator('#download-all').isVisible(),false);
   await page.evaluate(items=>setPanelState({status:'idle',items}),items);
-  assert.equal(await page.locator('.image-card').count(),5);
+  assert.equal(await page.locator('.image-card').count(),5);assert.equal(await page.locator('#gallery').isVisible(),false);
   assert.equal(await page.locator('#count').textContent(),'5 imagens');
   const overflow=await page.locator('#image-list').evaluate(el=>({scroll:el.scrollHeight,height:el.clientHeight,overflow:getComputedStyle(el).overflowY}));
   assert.ok(overflow.scroll>overflow.height);assert.equal(overflow.overflow,'scroll');
@@ -173,7 +164,7 @@ const path=require('node:path');const http=require('node:http');const fs=require
   await page.locator('#layout').selectOption('grid');
   await page.locator('#gallery-toggle').click();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-  assert.equal(await page.locator('.convert-png').isVisible(),true);
+  assert.equal(await page.locator('.convert-png').count(),0);
   await page.locator('#gallery-toggle').click();
   await page.locator('#layout').selectOption('list');
   await page.locator('#select').click();
@@ -207,10 +198,12 @@ const path=require('node:path');const http=require('node:http');const fs=require
   await page.reload();
   await page.waitForFunction(()=>document.documentElement.lang==='es');
   assert.equal(await page.locator('#language').inputValue(),'es');
+  await page.evaluate(item=>setPanelState({status:'idle',items:[item]}),item);assert.equal(await page.locator('#gallery').isVisible(),false);await page.locator('#gallery-toggle').click();assert.equal(await page.locator('#gallery').isVisible(),true);await page.reload();await page.evaluate(item=>setPanelState({status:'idle',items:[item]}),item);await page.waitForFunction(()=>document.querySelector('#gallery-toggle').getAttribute('aria-pressed')==='true');assert.equal(await page.locator('#gallery').isVisible(),true);
+
   await page.locator('#language').selectOption('pt-BR');
   assert.equal(await page.locator('#select span').first().textContent(),'Caçar imagem');
   assert.equal(await page.locator('#layout option[value="grid"]').textContent(),'Grade');
   assert.deepEqual(errors,[]);
-  console.log('PASS: manual hunt; multiple previews; editable download titles; no automatic download; continued hunting; vivid active button; trash clears collection; batch button at 4+; hidden CDN domains; 4+ scroll; fixed panel height; draft preservation; per-image removal; preview failure; tab isolation; narrow layout; 16px grid row spacing at 280/360/700px with new images and gallery open. Open original button, middle-click gallery, per-tab zoom request, legacy layout migration, individual/ZIP choice, duplicate ZIP guard and partial failures also passed. Copy URL, layout choices, reverse search URL and native WebP-to-PNG codec also passed; original remains available. Chrome APIs mocked.');
+  console.log('PASS: manual hunt; multiple previews; editable download titles; no automatic download; continued hunting; vivid active button; trash clears collection; batch button at 4+; hidden CDN domains; 4+ scroll; fixed panel height; draft preservation; per-image removal; preview failure; tab isolation; narrow layout; 16px grid row spacing at 280/360/700px with new images and gallery open. Open original button, middle-click gallery, per-tab zoom request, legacy layout migration, individual/ZIP choice, duplicate ZIP guard and partial failures also passed. Copy URL, layout choices, reverse search URL, automatic first-image gallery and persisted manual opt-out passed; PNG Beta absent. Chrome APIs mocked.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve))}
 })().catch(error=>{console.error(error);process.exitCode=1});

@@ -326,7 +326,9 @@
     const extension = imageExtension(mime) || /\.(jpg|jpeg|png|webp|avif|gif|svg|bmp|tiff?|ico)$/i.exec(filename(url))?.[1].toLowerCase();
     return clean + (extension ? '.' + extension : '');
   }
-  const api = { validateUrl, parseSrcset, imageUrl, imageCandidates, resolveImage, youtubeContext, staticYoutubeUrl, youtubeImageUrls, detectImageFormat, inspectImageResource, formatFileSize, formatFromBytes, backgroundUrl, imageExtension, filename, safeTitle, downloadFilename };
+  function archiveFilename(name='ClickImage',used){const clean=safeTitle(String(name).replace(/\.zip$/i,''))||'ClickImage',filename=clean+'.zip';return used?root.ClickImageZip.uniqueName(filename,used):filename;}
+  function localDownloadName(raw){if(typeof raw!=='string'||!raw||raw.length>180||/[<>:"/\\|?*\x00-\x1f\x7f]/.test(raw)||/^[. ]|[. ]$/.test(raw)||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(raw))throw Error('Nome de arquivo inválido.');return raw.normalize('NFC');}
+  const api = { archiveFilename, localDownloadName, validateUrl, parseSrcset, imageUrl, imageCandidates, resolveImage, youtubeContext, staticYoutubeUrl, youtubeImageUrls, detectImageFormat, inspectImageResource, formatFileSize, formatFromBytes, backgroundUrl, imageExtension, filename, safeTitle, downloadFilename };
   root.ClickImageUtils = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

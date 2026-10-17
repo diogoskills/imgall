@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ClickImage",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "description": "__MSG_extensionDescription__",
   "permissions": [
     "activeTab",
@@ -33,5 +33,9 @@
   "default_locale": "pt_BR",
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
-  }
+  },
+  "host_permissions": [
+    "https://i.ytimg.com/*",
+    "https://img.youtube.com/*"
+  ]
 }

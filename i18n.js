@@ -134,10 +134,6 @@
   "en": "Open image",
   "es": "Abrir imagen"
  },
- "Converter WebP estático em PNG, sem redimensionar": {
-  "en": "Convert static WebP to PNG without resizing",
-  "es": "Convertir WebP estático a PNG sin cambiar el tamaño"
- },
  "Pronta para baixar": {
   "en": "Ready to download",
   "es": "Lista para descargar"
@@ -266,14 +262,6 @@
   "en": "Could not open reverse image search.",
   "es": "No se pudo abrir la búsqueda inversa."
  },
- "Não foi possível baixar o PNG.": {
-  "en": "Could not download the PNG.",
-  "es": "No se pudo descargar el PNG."
- },
- "O site bloqueou a conversão. O download original continua disponível.": {
-  "en": "The site blocked conversion. The original download is still available.",
-  "es": "El sitio bloqueó la conversión. La descarga original sigue disponible."
- },
  "Prévia indisponível": {
   "en": "Preview unavailable",
   "es": "Vista previa no disponible"
@@ -281,22 +269,6 @@
  "Imagem encontrada": {
   "en": "Image found",
   "es": "Imagen encontrada"
- },
- "Convertendo…": {
-  "en": "Converting…",
-  "es": "Convirtiendo…"
- },
- "PNG baixando…": {
-  "en": "Downloading PNG…",
-  "es": "Descargando PNG…"
- },
- "PNG salva ✓": {
-  "en": "PNG saved ✓",
-  "es": "PNG guardado ✓"
- },
- "PNG (beta)": {
-  "en": "PNG (beta)",
-  "es": "PNG (beta)"
  },
  "Baixando…": {
   "en": "Downloading…",
@@ -390,42 +362,6 @@
   "en": "Invalid URL.",
   "es": "URL no válida."
  },
- "O site não permitiu obter o WebP para conversão.": {
-  "en": "The site did not allow reading the WebP for conversion.",
-  "es": "El sitio no permitió obtener el WebP para convertirlo."
- },
- "A beta aceita arquivos de até 16 MB.": {
-  "en": "The beta supports files up to 16 MB.",
-  "es": "La beta admite archivos de hasta 16 MB."
- },
- "O recurso recebido não é WebP.": {
-  "en": "The received resource is not WebP.",
-  "es": "El recurso recibido no es WebP."
- },
- "WebP animado ainda não é suportado na conversão beta.": {
-  "en": "Animated WebP is not supported by the beta converter.",
-  "es": "La conversión beta aún no admite WebP animado."
- },
- "A beta aceita imagens de até 16 megapixels.": {
-  "en": "The beta supports images up to 16 megapixels.",
-  "es": "La beta admite imágenes de hasta 16 megapíxeles."
- },
- "O PNG resultante ultrapassou o limite de 16 MB da beta.": {
-  "en": "The resulting PNG exceeds the beta's 16 MB limit.",
-  "es": "El PNG resultante supera el límite de 16 MB de la beta."
- },
- "Não foi possível preparar o PNG.": {
-  "en": "Could not prepare the PNG.",
-  "es": "No se pudo preparar el PNG."
- },
- "A conversão demorou demais. Tente baixar o original.": {
-  "en": "Conversion timed out. Try downloading the original.",
-  "es": "La conversión tardó demasiado. Intenta descargar el original."
- },
- "O site bloqueou a leitura para conversão. Use o download original.": {
-  "en": "The site blocked reading for conversion. Download the original.",
-  "es": "El sitio bloqueó la lectura para convertir. Descarga el original."
- },
  "O site não permitiu obter o arquivo.": {
   "en": "The site did not allow reading the file.",
   "es": "El sitio no permitió obtener el archivo."
@@ -490,21 +426,9 @@
   "en": "Could not start the download. The URL may have expired.",
   "es": "No se pudo iniciar la descarga. La URL puede haber caducado."
  },
- "PNG já solicitado ou imagem removida.": {
-  "en": "PNG already requested or image removed.",
-  "es": "PNG ya solicitado o imagen eliminada."
- },
- "PNG inválido ou grande demais.": {
-  "en": "PNG is invalid or too large.",
-  "es": "El PNG no es válido o es demasiado grande."
- },
  "Digite um nome válido.": {
   "en": "Enter a valid name.",
   "es": "Introduce un nombre válido."
- },
- "Não foi possível iniciar o download PNG.": {
-  "en": "Could not start the PNG download.",
-  "es": "No se pudo iniciar la descarga del PNG."
  },
  "O download em lote já está em andamento.": {
   "en": "A batch download is already running.",
@@ -1230,6 +1154,113 @@
   "es": "Confirma la eliminación de todas las Bibliotecas."
  }
 });
+ Object.assign(messages,{
+ "Novo conjunto": {
+  "en": "New collection",
+  "es": "Nuevo conjunto"
+ },
+ "Nome do conjunto": {
+  "en": "Collection name",
+  "es": "Nombre del conjunto"
+ },
+ "Criar grupo": {
+  "en": "Create group",
+  "es": "Crear grupo"
+ },
+ "Criar conjunto dentro deste": {
+  "en": "Create collection inside this",
+  "es": "Crear conjunto dentro de este"
+ },
+ "Baixar imagens deste grupo": {
+  "en": "Download images in this group",
+  "es": "Descargar imágenes de este grupo"
+ },
+ "Baixar imagens da árvore": {
+  "en": "Download images in the tree",
+  "es": "Descargar imágenes del árbol"
+ },
+ "ZIP deste grupo": {
+  "en": "ZIP of this group",
+  "es": "ZIP de este grupo"
+ },
+ "ZIP da árvore completa": {
+  "en": "ZIP of the full tree",
+  "es": "ZIP del árbol completo"
+ },
+ "Grupos e subgrupos": {
+  "en": "Groups and subgroups",
+  "es": "Grupos y subgrupos"
+ },
+ "Conjuntos organizam grupos e subgrupos. Abra uma pasta para ver suas imagens.": {
+  "en": "Collections organize groups and subgroups. Open a folder to view its images.",
+  "es": "Los conjuntos organizan grupos y subgrupos. Abre una carpeta para ver sus imágenes."
+ },
+ "Este grupo não possui imagens diretas. Abra um subgrupo ou use as opções da árvore no menu de contexto.": {
+  "en": "This group has no direct images. Open a subgroup or use the tree options in the context menu.",
+  "es": "Este grupo no tiene imágenes directas. Abre un subgrupo o usa las opciones del árbol en el menú contextual."
+ },
+ "Este grupo não possui imagens diretas.": {
+  "en": "This group has no direct images.",
+  "es": "Este grupo no tiene imágenes directas."
+ },
+ "Este grupo não possui imagens diretas. Baixar as imagens da árvore completa?": {
+  "en": "This group has no direct images. Download images from the entire tree?",
+  "es": "Este grupo no tiene imágenes directas. ¿Descargar las imágenes de todo el árbol?"
+ },
+ "Conjuntos organizam pastas e não recebem imagens. Escolha um Grupo ou Subgrupo.": {
+  "en": "Collections organize folders and cannot receive images. Choose a Group or Subgroup.",
+  "es": "Los conjuntos organizan carpetas y no reciben imágenes. Elige un Grupo o Subgrupo."
+ },
+ "Conjuntos não podem conter imagens diretamente.": {
+  "en": "Collections cannot contain images directly.",
+  "es": "Los conjuntos no pueden contener imágenes directamente."
+ },
+ "Tipo de pasta inválido.": {
+  "en": "Invalid folder type.",
+  "es": "Tipo de carpeta inválido."
+ },
+ "Nome de arquivo inválido.": {
+  "en": "Invalid filename.",
+  "es": "Nombre de archivo inválido."
+ },
+ "Não foi possível preparar o nome do download.": {
+  "en": "Could not prepare the download filename.",
+  "es": "No se pudo preparar el nombre de la descarga."
+ },
+ "Sem conexão com a internet.": {
+  "en": "No internet connection.",
+  "es": "Sin conexión a internet."
+ },
+ "Não foi possível ler a imagem: falha de rede ou permissão de leitura (CORS). O navegador não informa qual das duas ocorreu. O download individual pode funcionar.": {
+  "en": "Could not read the image: network or read permission (CORS) failure. The browser does not distinguish between them. Individual download may work.",
+  "es": "No se pudo leer la imagen: fallo de red o permiso de lectura (CORS). El navegador no distingue entre ambos. La descarga individual podría funcionar."
+ },
+ "Imagem não encontrada (HTTP 404).": {
+  "en": "Image not found (HTTP 404).",
+  "es": "Imagen no encontrada (HTTP 404)."
+ },
+ "Imagem não encontrada (HTTP 410).": {
+  "en": "Image not found (HTTP 410).",
+  "es": "Imagen no encontrada (HTTP 410)."
+ },
+ "Autenticação necessária (HTTP 401).": {
+  "en": "Authentication required (HTTP 401).",
+  "es": "Autenticación necesaria (HTTP 401)."
+ },
+ "Acesso negado pelo site (HTTP 403).": {
+  "en": "Access denied by the site (HTTP 403).",
+  "es": "Acceso denegado por el sitio (HTTP 403)."
+ },
+ "Prévia indisponível nesta resolução.": {
+  "en": "Preview unavailable at this resolution.",
+  "es": "Vista previa no disponible en esta resolución."
+ },
+ "O site retornou um arquivo vazio.": {
+  "en": "The site returned an empty file.",
+  "es": "El sitio devolvió un archivo vacío."
+ }
+});
+ Object.assign(messages,{"Prévia animada não é uma thumbnail estática.":{"en":"Animated preview is not a static thumbnail.","es":"Una vista previa animada no es una miniatura estática."},"Conjunto":{"en":"Collection","es":"Conjunto"}});
  const languages=['pt-BR','en','es'];let language='pt-BR';const listeners=new Set();
  function t(source,values={}){
   if(typeof source!=='string')return source || '';
@@ -1249,7 +1280,7 @@
   try{await root.chrome?.storage?.local?.set({clickimageLanguage:language})}catch{throw new Error('Não foi possível salvar o idioma.')}
  }
  const originals=new WeakMap();
- const dynamic='#feedback,#batch-progress,#status-label,#count,#empty-title,#empty-description,#select,#download-all,.source,.dimensions,.item-status,.item-error,.download,.convert-png,#folder-title,#folders,#destination,#storage-usage,#folder-count,#library-feedback,#selection-count,#library-picker,.library-save-status';
+ const dynamic='#feedback,#batch-progress,#status-label,#count,#empty-title,#empty-description,#select,#download-all,.source,.dimensions,.item-status,.item-error,.download,#folder-title,#folders,#destination,#storage-usage,#folder-count,#library-feedback,#selection-count,#library-picker,.library-save-status';
  function apply(scope){
   if(!scope)return;
   const document=scope.ownerDocument || scope;

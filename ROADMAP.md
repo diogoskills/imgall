@@ -1,5 +1,14 @@
 # Roadmap do ClickImage
 
+## Entregue — 2.11
+
+- [x] Leitura de thumbnails com permissões mínimas, fallback verificado e mensagens HTTP/rede.
+- [x] Nomes consistentes, blobs com nome registrado e imagens em abas de segundo plano.
+- [x] Pasta automática com preferência manual persistida; remoção de PNG Beta.
+- [x] Tipos G/C/S sobre a árvore existente, cartões de pastas e escopos direto/árvore nos downloads.
+- [x] Fonte reutilizável da marca, ícones e favicons.
+- [ ] Homologar permissões CORS e nomes finais com extensão instalada no Chrome do usuário.
+
 ## Entregue — 2.10
 
 - [x] Árvore multinível, guias e seleção parcial/total compartilhada.

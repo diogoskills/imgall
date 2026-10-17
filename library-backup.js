@@ -32,7 +32,7 @@
   const padding=text.indexOf('=');if(padding!==-1&&!/^={1,2}$/.test(text.slice(padding)))invalid();
   let binary;try{binary=atob(text)}catch{invalid()}if(btoa(binary)!==text)invalid();return Uint8Array.from(binary,c=>c.charCodeAt(0));
  }
- function metadata(d,images){return {format:'clickimage-library',version:3,library:{id:d.library.id,name:d.library.name},exportedAt:Date.now(),folders:d.folders.map(({id,name,parentId,createdAt,order})=>({id,name,parentId:parentId||null,createdAt,order})),images,links:d.links}}
+ function metadata(d,images){return {format:'clickimage-library',version:3,library:{id:d.library.id,name:d.library.name},exportedAt:Date.now(),folders:d.folders.map(({id,name,parentId,kind,createdAt,order})=>({id,name,parentId:parentId||null,kind:root.ClickImageTree.kind({kind,parentId}),createdAt,order})),images,links:d.links}}
  async function exportLibrary(onProgress=()=>{},libraryId='main'){
   const d=await root.ClickImageLibrary.backupData(libraryId),images=[],assets=new Map(d.assets.map(a=>[a.id,a.blob]));let total=0,failed=0;
   if(d.images.reduce((n,i)=>n+i.sizeBytes,0)>JSON_IMAGES)throw Error('O backup JSON aceita até 16 MB de imagens. Use ZIP para exportar coleções maiores.');
@@ -61,7 +61,8 @@
   const folders=[],images=[],links=[],folderIds=new Set(),imageIds=new Set(),usedPaths=new Set(['manifest.json']),names=new Set();
   for(const f of m.folders){
    if(!f||typeof f.id!=='string'||!f.id||f.id.length>80||folderIds.has(f.id)||(f.parentId!==undefined&&f.parentId!==null&&(typeof f.parentId!=='string'||!f.parentId||f.parentId.length>80)))invalid();
-   const parentId=f.parentId||null,folderName=root.ClickImageLibrary.folderName(f.name),key=JSON.stringify([parentId,folderName.toLocaleLowerCase()]);if(names.has(key))invalid();names.add(key);folderIds.add(f.id);folders.push({id:f.id,name:folderName,parentId,createdAt:timestamp(f.createdAt),order:Number.isFinite(f.order)?f.order:undefined});
+   if(f.kind!==undefined&&!['collection','group','subgroup'].includes(f.kind))invalid();
+   const parentId=f.parentId||null,folderName=root.ClickImageLibrary.folderName(f.name),key=JSON.stringify([parentId,folderName.toLocaleLowerCase()]);if(names.has(key))invalid();names.add(key);folderIds.add(f.id);folders.push({id:f.id,name:folderName,parentId,kind:f.kind===undefined?root.ClickImageTree.kind({parentId}):f.kind,createdAt:timestamp(f.createdAt),order:Number.isFinite(f.order)?f.order:undefined});
   }
   const byId=new Map(folders.map(f=>[f.id,f]));for(const folder of folders){const seen=new Set([folder.id]);let parent=folder.parentId;while(parent){if(seen.size>=32||!byId.has(parent)||seen.has(parent))invalid();seen.add(parent);parent=byId.get(parent).parentId}}
   let size=0;const failures=[],unavailable=new Set();
@@ -76,7 +77,7 @@
    imageIds.add(image.id);usedPaths.add(image.path);images.push(record);onProgress({finished:images.length,total:m.images.length});
   }
   const keys=new Set(),referenced=new Set();for(const link of m.links){
-   if(!link||!folderIds.has(link.folderId)||!imageIds.has(link.imageId)||typeof link.title!=='string'||link.title.length>80)invalid();
+   if(!link||!folderIds.has(link.folderId)||!root.ClickImageTree.acceptsImages(byId.get(link.folderId))||!imageIds.has(link.imageId)||typeof link.title!=='string'||link.title.length>80)invalid();
    const title=root.ClickImageUtils.safeTitle(link.title);if(!title)invalid();if(unavailable.has(link.imageId)){const failure=failures.find(f=>f.id===link.imageId);if(failure)failure.name=title;continue}const key=JSON.stringify([link.folderId,link.imageId]);if(keys.has(key))continue;keys.add(key);referenced.add(link.imageId);links.push({folderId:link.folderId,imageId:link.imageId,title,createdAt:timestamp(link.createdAt),order:Number.isFinite(link.order)?link.order:undefined});
   }
   if((isZip&&files.size!==usedPaths.size)||images.some(i=>!referenced.has(i.image.id)))invalid();return {name,folders,images,links,failures};

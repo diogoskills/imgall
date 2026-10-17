@@ -17,7 +17,7 @@ document.addEventListener('visibilitychange',()=>{
   if(document.hidden)closePanelConnection();
   else if(closing){closing=false;connectPanel();heartbeat=setInterval(bindPanel,20000);refresh();}
 });
-const cards=new Map(),galleryImages=new Map(),converting=new Set();let galleryOpen=false;
+const cards=new Map(),galleryImages=new Map();let galleryOpen=false,galleryChoice=null;
 function details(card){
  const item=card._item;if(!item)return;
  const type=["JPG","PNG","WEBP","AVIF","GIF","SVG","BMP","TIF","ICO"].includes(item.format)?item.format:null;
@@ -28,7 +28,7 @@ function renderGallery(items){
  $("gallery").hidden=!galleryOpen;$("collection-body").classList.toggle("gallery-open",galleryOpen);
  for(const [id,image] of galleryImages)if(!items.some(item=>item.id===id)){image.remove();galleryImages.delete(id)}
  if(!galleryOpen)return;
- for(const item of items){if(galleryImages.has(item.id)){galleryImages.get(item.id).setAttribute("aria-label",t("Ver {name}",{name:item.title||item.filename}));galleryImages.get(item.id).querySelector("img").alt=item.label||t("Imagem selecionada");continue;}
+ for(const item of items){if(galleryImages.has(item.id)){galleryImages.get(item.id).setAttribute("aria-label",t("Ver {name}",{name:item.title||item.filename}));const img=galleryImages.get(item.id).querySelector("img");img.alt=item.label||t("Imagem selecionada");if(img.src!==item.url)img.src=item.url;continue;}
    const button=document.createElement("button");button.className="gallery-entry";button.setAttribute("aria-label",t("Ver {name}",{name:item.title||item.filename}));
    const image=document.createElement("img");image.src=item.url;image.alt=item.label||t("Imagem selecionada");image.referrerPolicy="no-referrer";
    button.append(image);button.addEventListener("click",()=>cards.get(item.id)?.scrollIntoView({block:"nearest"}));
@@ -81,17 +81,6 @@ function render(value) {
       });
       ClickImageLibraryPanel.addSaveButton(card,()=>({...card._item,title:input.value}));
       card.querySelector('.open-image').addEventListener('click',()=>openImage(item.id));
-      card.querySelector('.convert-png').addEventListener('click',async()=>{
-        const targetTab=tabId;if(converting.has(item.id))return;converting.add(item.id);render(collection);
-        let error=null;
-        try{
-          const title=input.value;
-          const converted=await ClickImageActions.convertWebpToPng(card._item.url);
-          const response=await chrome.runtime.sendMessage({type:'CLICKIMAGE_CONFIRM_PNG',tabId:targetTab,itemId:item.id,title,dataURL:converted.dataURL});
-          if(!response?.ok)error=response?.error || t('Não foi possível baixar o PNG.');
-        }catch(failure){error=failure.message || t('O site bloqueou a conversão. O download original continua disponível.');}
-        finally{converting.delete(item.id);await refresh();if(error)notice(error);}
-      });
       card.querySelector('.remove').addEventListener('click',()=>command('CLICKIMAGE_REMOVE',{itemId:item.id}));
       card.querySelector('.download').addEventListener('click',async()=>{
         const button=card.querySelector('.download');if(button.disabled)return;button.disabled=true;
@@ -106,12 +95,12 @@ function render(value) {
       $('image-list').append(card);cards.set(item.id,card);
     }
     card._item=item;
+    const preview=card.querySelector('.preview');if(preview.src!==item.url){preview.hidden=false;card.querySelector('.preview-fallback').hidden=true;card._dimensions=null;preview.src=item.url}
     const input=card.querySelector('.title-input');
     if(document.activeElement!==input)input.value=item.title || item.filename.replace(/\.(jpe?g|png|webp|avif|gif|svg|bmp|tiff?|ico)$/i,'');
-    input.disabled=converting.has(item.id)||['queued','downloading','downloaded'].includes(item.status);
+    input.disabled=['queued','downloading','downloaded'].includes(item.status);
     card.querySelector('.source').textContent=t('Imagem encontrada');
     if(card._dimensions)details(card);else card.querySelector('.dimensions').textContent=t(card.querySelector('.preview').hidden?'Prévia indisponível':'Verificando prévia…');
-    const pngButton=card.querySelector('.convert-png');pngButton.hidden=item.format!=='WEBP';pngButton.disabled=converting.has(item.id)||['downloading','downloaded'].includes(item.pngStatus);pngButton.textContent=converting.has(item.id)?t('Convertendo…'):item.pngStatus==='downloading'?t('PNG baixando…'):item.pngStatus==='downloaded'?t('PNG salva ✓'):t('PNG (beta)');
     const ready=['ready','error'].includes(item.status);
     card.querySelector('.download').disabled=!ready;
     card.querySelector('.download').textContent=item.status==='downloading'?t('Baixando…'):item.status==='downloaded'?t('Salva ✓'):item.status==='queued'?t('Na fila'):t('Baixar imagem');
@@ -119,6 +108,7 @@ function render(value) {
     card.querySelector('.item-status').textContent=item.status==='downloaded'?t('Arquivo salvo'):item.status==='downloading'?t('Download solicitado'):item.status==='error'?t('Tente novamente'):item.status==='queued'?t('Aguardando sua vez'):t('Sem compressão extra');
     card.querySelector('.item-error').hidden=!item.error;card.querySelector('.item-error').textContent=ClickImageI18n.error(item.error);
   }
+  if(items.length && galleryChoice===null){galleryOpen=true;$('gallery-toggle').setAttribute('aria-pressed','true')}
   renderGallery(items);
 }
 async function refresh(){
@@ -162,7 +152,7 @@ async function openImage(itemId){
   else if(!response.zoomSet)notice(t('Imagem aberta. O Chrome não permitiu ajustar o zoom desta aba.'));
  }catch{notice(t('Não foi possível abrir a imagem.'))}
 }
-async function saveArchive(blob,signal){return ClickImageFiles.save(blob,'ClickImage.zip',{signal})}
+async function saveArchive(blob,signal){return ClickImageFiles.save(blob,ClickImageUtils.archiveFilename(),{signal})}
 $('batch-zip').addEventListener('click',async()=>{
  if(zipJob || batchRequest || $('download-all').disabled)return;
  const targetTab=tabId,job=new AbortController();zipJob=job;
@@ -176,11 +166,11 @@ $('batch-zip').addEventListener('click',async()=>{
  }catch(error){zipProgress=error.name==='AbortError'?null:{error:error.message || 'Não foi possível criar o ZIP.'};}
  finally{if(zipJob===job)zipJob=null;if(tabId===targetTab)render(collection);else zipProgress=null}
 });
-$('gallery-toggle').addEventListener('click',()=>{galleryOpen=!galleryOpen;$('gallery-toggle').setAttribute('aria-pressed',String(galleryOpen));renderGallery(collection.items||[])});
+$('gallery-toggle').addEventListener('click',()=>{galleryOpen=!galleryOpen;galleryChoice=galleryOpen;chrome.storage.local?.set({clickimageGalleryChoice:galleryChoice}).catch(()=>{});$('gallery-toggle').setAttribute('aria-pressed',String(galleryOpen));renderGallery(collection.items||[])});
 $('layout').addEventListener('change',()=>{ $('image-list').dataset.layout=$('layout').value;chrome.storage.local?.set({clickimageLayout:$('layout').value}).catch(()=>{}); });
-try{chrome.storage.local?.get('clickimageLayout').then(value=>{const layout=value.clickimageLayout==='compact'?'list':value.clickimageLayout;if(['list','grid'].includes(layout)){$('layout').value=layout;$('image-list').dataset.layout=layout;if(value.clickimageLayout==='compact')chrome.storage.local.set({clickimageLayout:'list'}).catch(()=>{})}}).catch(()=>{});}catch{}
+try{chrome.storage.local?.get(['clickimageLayout','clickimageGalleryChoice']).then(value=>{if(typeof value.clickimageGalleryChoice==='boolean'){galleryChoice=value.clickimageGalleryChoice;galleryOpen=galleryChoice;$('gallery-toggle').setAttribute('aria-pressed',String(galleryOpen));renderGallery(collection.items||[])}const layout=value.clickimageLayout==='compact'?'list':value.clickimageLayout;if(['list','grid'].includes(layout)){$('layout').value=layout;$('image-list').dataset.layout=layout;if(value.clickimageLayout==='compact')chrome.storage.local.set({clickimageLayout:'list'}).catch(()=>{})}}).catch(()=>{});}catch{}
 $('help').addEventListener('click',()=>{$('help-text').hidden=!$('help-text').hidden});
-chrome.storage.onChanged.addListener((changes,area)=>{if(area==='session' && tabId && changes[`clickimage:${tabId}`])render(changes[`clickimage:${tabId}`].newValue || {status:'idle',items:[]})});
+chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local' && changes.clickimageGalleryChoice){galleryChoice=changes.clickimageGalleryChoice.newValue??null;galleryOpen=galleryChoice===true||(galleryChoice===null&&!!collection.items?.length);$('gallery-toggle').setAttribute('aria-pressed',String(galleryOpen));renderGallery(collection.items||[])}if(area==='session' && tabId && changes[`clickimage:${tabId}`])render(changes[`clickimage:${tabId}`].newValue || {status:'idle',items:[]})});
 chrome.tabs.onActivated.addListener(refresh);
 chrome.tabs.onUpdated.addListener((id,change)=>{if(id===tabId && change.status==='complete')refresh()});
 refresh();

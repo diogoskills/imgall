@@ -24,7 +24,7 @@ test('ZIP cancellation and total failure never produce an empty successful archi
 test('open original image applies 100% zoom only to the new tab after loading; failure still opens it',async()=>{
  const calls=[],listeners=new Set();const tabs={create:async options=>{calls.push(['create',options]);return {id:42}},get:async()=>({status:'complete'}),onUpdated:{addListener:fn=>listeners.add(fn),removeListener:fn=>listeners.delete(fn)},setZoomSettings:async(...args)=>calls.push(['settings',...args]),setZoom:async(...args)=>calls.push(['zoom',...args]),update:async(...args)=>calls.push(['update',...args])};
  assert.deepEqual(await actions.openImage('https://img.test/a?signature=keep',tabs),{ok:true,zoomSet:true});
- assert.deepEqual(calls,[['create',{url:'https://img.test/a?signature=keep',active:false}],['settings',42,{mode:'automatic',scope:'per-tab'}],['zoom',42,1],['update',42,{active:true}]]);assert.equal(listeners.size,0);
+ assert.deepEqual(calls,[['create',{url:'https://img.test/a?signature=keep',active:false}],['settings',42,{mode:'automatic',scope:'per-tab'}],['zoom',42,1]]);assert.equal(listeners.size,0);
  tabs.setZoomSettings=async()=>{throw new Error('unavailable')};assert.deepEqual(await actions.openImage('https://img.test/a',tabs),{ok:true,zoomSet:false});
  await assert.rejects(actions.openImage('javascript:alert(1)',tabs),/inválida/);
 });
@@ -34,7 +34,7 @@ test('opening waits for this tab completion before applying isolated zoom',async
  const opening=actions.openImage('https://img.test/a',tabs);await new Promise(resolve=>setImmediate(resolve));
  for(const listener of listeners)listener(8,{status:'complete'});assert.deepEqual(calls,[]);
  for(const listener of [...listeners])listener(9,{status:'complete'});
- await opening;assert.deepEqual(calls,['settings','zoom','activate']);assert.equal(listeners.size,0);
+ await opening;assert.deepEqual(calls,['settings','zoom']);assert.equal(listeners.size,0);
 });
 
 test('worker opens only a trusted panel selected original, never a supplied arbitrary URL',async()=>{
@@ -47,4 +47,42 @@ test('worker opens only a trusted panel selected original, never a supplied arbi
  assert.equal((await send(message,panel)).ok,true);assert.deepEqual(opened,['https://img.test/original?signature=keep']);
  assert.equal(await send(message,{id:'extension',tab:{id:7},frameId:0}),undefined);
  assert.equal((await send({...message,itemId:'removed'},panel)).ok,false);assert.equal(opened.length,1);
+});
+
+test('YouTube read fallback verifies responses, tries only lower static variants of the same video and preserves signed query',async()=>{
+ const saved=globalThis.fetch,calls=[],bytes=fs.readFileSync(path.join(__dirname,'../icons/128.png'));
+ globalThis.fetch=async raw=>{const url=new URL(raw);calls.push(url);return url.pathname.endsWith('/hqdefault.jpg')?new Response(bytes):new Response('',{status:404})};
+ try{const resource=await zip.readImage('https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg?sqp=signed',null,zip.MAX_FILE);assert.equal(resource.url,'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg?sqp=signed');assert.deepEqual(calls.map(u=>u.pathname.split('/').pop()),['maxresdefault.jpg','sddefault.jpg','hqdefault.jpg']);assert.ok(calls.every(u=>u.hostname==='i.ytimg.com'&&u.search==='?sqp=signed'));assert.deepEqual(Buffer.from(resource.bytes),bytes)}finally{globalThis.fetch=saved}
+});
+test('read diagnostics preserve HTTP status, avoid fallback for denied/network resources and reject HTML with an image MIME',async()=>{
+ const saved=globalThis.fetch;let called=0;
+ try{for(const [status,pattern]of [[401,/Autenticação/],[403,/Acesso negado/],[404,/não encontrada/],[500,/HTTP 500/]]){called=0;globalThis.fetch=async()=>{called++;return new Response('',{status})};await assert.rejects(zip.readImage('https://img.test/a'),pattern);assert.equal(called,1)}globalThis.fetch=async()=>{throw new TypeError('Failed to fetch')};await assert.rejects(zip.readImage('https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg'),/rede ou permissão/);globalThis.fetch=async()=>new Response('<html>Login</html>',{headers:{'content-type':'image/jpeg'}});await assert.rejects(zip.readImage('https://img.test/a'),/não é uma imagem/)}finally{globalThis.fetch=saved}
+});
+test('YouTube does not accept a small placeholder as maxres, or probe a different host/video',async()=>{
+ const saved=globalThis.fetch,decode=globalThis.createImageBitmap;let calls=0,closed=0;const bytes=fs.readFileSync(path.join(__dirname,'../icons/128.png'));
+ globalThis.fetch=async()=>{calls++;return new Response(bytes)};globalThis.createImageBitmap=async()=>({width:120,height:90,close:()=>closed++});
+ try{assert.equal(zip.youtubeThumbnail('https://i.ytimg.com.attacker.test/vi/abcdefghijk/maxresdefault.jpg'),null);assert.equal(zip.youtubeThumbnail('https://i.ytimg.com/vi/abcdefghijk/preview.gif'),null);const resource=await zip.readImage('https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg');assert.ok(resource.url.endsWith('hqdefault.jpg'));assert.equal(calls,3);assert.equal(closed,3)}finally{globalThis.fetch=saved;if(decode)globalThis.createImageBitmap=decode;else delete globalThis.createImageBitmap}
+});
+test('central download naming preserves original extensions, custom titles and predictable archive conflicts',()=>{
+ assert.equal(utils.downloadFilename('https://site.test/Original%20name.jpeg','', 'image/jpeg'),'Original name.jpeg');assert.equal(utils.downloadFilename('https://site.test/a.webp','Minha arte','image/png'),'Minha arte.png');const used=new Set();assert.equal(utils.archiveFilename(), 'ClickImage.zip');assert.equal(utils.archiveFilename('Animes',used),'Animes.zip');assert.equal(utils.archiveFilename('Animes',used),'Animes (2).zip');assert.throws(()=>utils.localDownloadName('../escape.zip'));assert.throws(()=>utils.localDownloadName('CON.zip'));
+});
+test('blob filename registration and download hook survive worker state, reject unsafe paths and content-script senders',async()=>{
+ const vm=require('node:vm');let listener,naming;const values={},noop={addListener:()=>{}};
+ const chrome={runtime:{id:'ext',getURL:f=>'chrome-extension://ext/'+f,onMessage:{addListener:fn=>listener=fn}},storage:{session:{get:async key=>structuredClone(key===null?values:{[key]:values[key]}),set:async v=>Object.assign(values,v),remove:async keys=>{for(const k of Array.isArray(keys)?keys:[keys])delete values[k]}}},action:{onClicked:noop},tabs:{onRemoved:noop},downloads:{onDeterminingFilename:{addListener:fn=>naming=fn},onChanged:noop}};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../background.js'),'utf8'),{chrome,importScripts:()=>{},ClickImageUtils:utils});
+ const send=(message,sender={id:'ext',url:'chrome-extension://ext/library.html',tab:{id:4}})=>new Promise(resolve=>{if(listener(message,sender,resolve)!==true)resolve(undefined)}),url='blob:chrome-extension://ext/123',msg={type:'CLICKIMAGE_FILE_NAME',url,filename:'Animes.zip'};
+ assert.equal((await send(msg)).ok,true);const result=await new Promise(resolve=>naming({byExtensionId:'ext',url,id:1},resolve));assert.equal(result.filename,'Animes.zip');assert.equal(result.conflictAction,'uniquify');assert.equal((await send({...msg,filename:'../bad.zip'})).ok,false);assert.equal(await send(msg,{id:'ext',url:'https://site.test/',tab:{id:4},frameId:0}),undefined);assert.equal(await send({...msg,url:'blob:https://site.test/123'}),undefined);await send({...msg,remove:true});assert.equal(Object.keys(values).length,0);
+});
+
+test('individual YouTube download uses the verified fallback URL, custom name and detected format',async()=>{
+ const vm=require('node:vm'),saved=globalThis.fetch,bytes=fs.readFileSync(path.join(__dirname,'../icons/128.png'));globalThis.fetch=async url=>url.endsWith('/hqdefault.jpg')?new Response(bytes):new Response('',{status:404});let listener;const downloads=[],values={'clickimage:7':{status:'idle',items:[{id:'selected',url:'https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg',title:'Minha thumbnail',format:'JPG',status:'ready'}]}},noop={addListener:()=>{}};
+ const chrome={runtime:{id:'ext',getURL:f=>'chrome-extension://ext/'+f,onMessage:{addListener:fn=>listener=fn}},storage:{session:{get:async key=>structuredClone({[key]:values[key]}),set:async v=>Object.assign(values,structuredClone(v))}},action:{onClicked:noop},tabs:{onRemoved:noop},downloads:{onDeterminingFilename:noop,onChanged:noop,download:async options=>{downloads.push(options);return 99},search:async()=>[{state:'in_progress'}]}};
+ try{vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../background.js'),'utf8'),{chrome,importScripts:()=>{},ClickImageUtils:utils,ClickImageZip:zip});const result=await new Promise(resolve=>listener({type:'CLICKIMAGE_CONFIRM',tabId:7,itemId:'selected'},{id:'ext',url:'chrome-extension://ext/panel.html'},resolve));assert.equal(result.ok,true);assert.equal(downloads[0].url,'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg');assert.equal(downloads[0].filename,'Minha thumbnail.png');assert.equal(values['clickimage:7'].items[0].url,downloads[0].url);assert.equal(values['clickimage:7'].items[0].format,'PNG');
+ values['clickimage:7'].items[0].status='ready';values['clickimage:7'].items[0].url='https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg';globalThis.fetch=async()=>{throw new TypeError('Read blocked')};const fallback=await new Promise(resolve=>listener({type:'CLICKIMAGE_CONFIRM',tabId:7,itemId:'selected'},{id:'ext',url:'chrome-extension://ext/panel.html'},resolve));assert.equal(fallback.ok,true);assert.equal(downloads.at(-1).url,'https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg');await assert.rejects(zip.readImage(downloads.at(-1).url),/rede ou permissão/);
+ }finally{globalThis.fetch=saved}
+});
+test('YouTube reader rejects GIF preview bytes even at a static JPG URL',async()=>{
+ const saved=globalThis.fetch,png=fs.readFileSync(path.join(__dirname,'../icons/128.png')),calls=[];
+ globalThis.fetch=async url=>{calls.push(url);return new Response(url.endsWith('maxresdefault.jpg')?Buffer.from('GIF89a-preview'):png)};
+ try{const resource=await zip.readImage('https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg');assert.ok(resource.url.endsWith('sddefault.jpg'));assert.equal(calls.length,2)}finally{globalThis.fetch=saved}
 });

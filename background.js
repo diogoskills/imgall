@@ -1,5 +1,5 @@
 'use strict';
-importScripts('i18n.js','image-utils.js','panel-actions.js');
+importScripts('i18n.js','image-utils.js','panel-actions.js','zip-utils.js');
 const locks = new Map();
 function localizeAction(){chrome.action.setTitle({title:globalThis.ClickImageI18n.t('ClickImage — selecionar imagem')}).catch(()=>{})}
 globalThis.ClickImageI18n?.onChange(localizeAction);
@@ -50,6 +50,7 @@ chrome.action.onClicked.addListener(tab => {
 });
 chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
   if (item.byExtensionId !== chrome.runtime.id) { suggest(); return; }
+  if(item.url?.startsWith('blob:')){chrome.storage.session.get('clickimage-file:'+item.url).then(values=>{const entry=values['clickimage-file:'+item.url];if(entry&&entry.expires>Date.now())suggest({filename:ClickImageUtils.localDownloadName(entry.filename),conflictAction:'uniquify'});else suggest()}).catch(()=>suggest());return true;}
   if (!ClickImageUtils.validateUrl(item.url)) { suggest(); return; }
   // Use the saved requested title, including when the worker was suspended.
   chrome.storage.session.get(null).then(values => {
@@ -91,10 +92,6 @@ async function finishDownload(id, outcome, entry) {
   if (!entry) return;
   const current = await state(entry.tabId);
   const item=current.items.find(image=>image.id===entry.itemId);
-  if(entry.variant==='png'){
-    if(item && item.pngDownloadId===id){item.pngStatus=outcome==='complete'?'downloaded':'error';await save(entry.tabId,current);}
-    await chrome.storage.session.remove(downloadKey(id));return;
-  }
   if (item && item.downloadId === id) {
     item.status=outcome==='complete'?'downloaded':'error';
     if(outcome==='complete'){const [download]=await chrome.downloads.search({id});if(Number.isSafeInteger(download?.fileSize)&&download.fileSize>=0)item.sizeBytes=download.fileSize;}
@@ -120,7 +117,9 @@ async function confirm(tabId, itemId, fromBatch=false) {
   await save(tabId,current);
   let started=false;
   try {
-    const id=await chrome.downloads.download({url,filename:ClickImageUtils.downloadFilename(url,item.title),conflictAction:'uniquify',saveAs:false});
+    let downloadUrl=url;if(globalThis.ClickImageZip?.youtubeThumbnail(url)){try{const resource=await ClickImageZip.readImage(url,null,ClickImageZip.MAX_FILE);downloadUrl=resource.url;item.url=downloadUrl;item.format=ClickImageUtils.formatFromBytes(resource.bytes.subarray(0,64));await save(tabId,current)}catch(error){if(error.code!=='READ_UNAVAILABLE')throw error;/* Native individual downloads do not require reading bytes for a ZIP. */}}
+    const mime=({JPG:'image/jpeg',PNG:'image/png',WEBP:'image/webp',AVIF:'image/avif',GIF:'image/gif'})[item.format];
+    const id=await chrome.downloads.download({url:downloadUrl,filename:ClickImageUtils.downloadFilename(downloadUrl,item.title,mime),conflictAction:'uniquify',saveAs:false});
     started=true;item.downloadId=id;
     const entry={tabId,itemId,title:item.title || ''};
     await chrome.storage.session.set({[downloadKey(id)]:entry});
@@ -128,26 +127,11 @@ async function confirm(tabId, itemId, fromBatch=false) {
     const [download]=await chrome.downloads.search({id});
     if (download && ['complete','interrupted'].includes(download.state)) await finishDownload(id,download.state,entry);
     return {ok:true};
-  } catch {
+  } catch(error) {
     if (started) return {ok:true};
-    item.status='error';item.error='Não foi possível iniciar o download. A URL pode ter expirado.';
+    item.status='error';item.error=error.message||'Não foi possível iniciar o download. A URL pode ter expirado.';
     await save(tabId,current);return {ok:false,error:item.error};
   }
-}
-async function confirmPng(tabId,message){
-  const current=await state(tabId),item=current.items.find(image=>image.id===message.itemId);
-  if(!item || ['downloading','downloaded'].includes(item.pngStatus))return {ok:false,error:'PNG já solicitado ou imagem removida.'};
-  if(!ClickImageActions.isPngDataURL(message.dataURL))return {ok:false,error:'PNG inválido ou grande demais.'};
-  const title=ClickImageUtils.safeTitle(message.title || item.title || item.filename);
-  if(!title)return {ok:false,error:'Digite um nome válido.'};
-  item.pngStatus='downloading';await save(tabId,current);
-  let started=false;
-  try{
-    const id=await chrome.downloads.download({url:message.dataURL,filename:ClickImageUtils.downloadFilename(item.url,title,'image/png'),conflictAction:'uniquify',saveAs:false});started=true;item.pngDownloadId=id;
-    const entry={tabId,itemId:item.id,variant:'png'};await chrome.storage.session.set({[downloadKey(id)]:entry});await save(tabId,current);
-    const [download]=await chrome.downloads.search({id});if(download && ['complete','interrupted'].includes(download.state))await finishDownload(id,download.state,entry);
-    return {ok:true};
-  }catch{if(started)return {ok:true};item.pngStatus='error';await save(tabId,current);return {ok:false,error:'Não foi possível iniciar o download PNG.'};}
 }
 function scheduleBatch(tabId) { locked(tabId,()=>advanceBatch(tabId)).catch(()=>{}); }
 async function advanceBatch(tabId) {
@@ -189,9 +173,14 @@ async function startBatch(tabId, titles) {
 function panelSender(sender) { return sender.id===chrome.runtime.id && sender.url===chrome.runtime.getURL('panel.html') && !sender.tab; }
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   if (sender.id!==chrome.runtime.id || !message || typeof message.type!=='string') return;
+  if(message.type==='CLICKIMAGE_FILE_NAME'){
+    const trusted=['panel.html','library.html'].some(page=>sender.url===chrome.runtime.getURL(page));
+    if(!trusted||typeof message.url!=='string'||!message.url.startsWith('blob:'+chrome.runtime.getURL('')))return;
+    (async()=>{const key='clickimage-file:'+message.url;if(message.remove)await chrome.storage.session.remove(key);else{const filename=ClickImageUtils.localDownloadName(message.filename),all=await chrome.storage.session.get(null),expired=Object.keys(all).filter(k=>k.startsWith('clickimage-file:')&&all[k].expires<Date.now());if(expired.length)await chrome.storage.session.remove(expired);await chrome.storage.session.set({[key]:{filename,expires:Date.now()+600000}})}return {ok:true}})().then(reply).catch(()=>reply({ok:false,error:'Não foi possível preparar o nome do download.'}));return true;
+  }
   const isPanel=panelSender(sender),tabId=isPanel?message.tabId:sender.tab?.id;
   if (!Number.isInteger(tabId) || tabId<=0 || (!isPanel && sender.frameId!==0)) return;
-  const panelTypes=['CLICKIMAGE_STATE','CLICKIMAGE_SELECT','CLICKIMAGE_STOP','CLICKIMAGE_CONFIRM','CLICKIMAGE_REMOVE','CLICKIMAGE_RENAME','CLICKIMAGE_CLEAR_ALL','CLICKIMAGE_CONFIRM_ALL','CLICKIMAGE_CONFIRM_PNG','CLICKIMAGE_OPEN_IMAGE'];
+  const panelTypes=['CLICKIMAGE_STATE','CLICKIMAGE_SELECT','CLICKIMAGE_STOP','CLICKIMAGE_CONFIRM','CLICKIMAGE_REMOVE','CLICKIMAGE_RENAME','CLICKIMAGE_CLEAR_ALL','CLICKIMAGE_CONFIRM_ALL','CLICKIMAGE_OPEN_IMAGE'];
   const contentTypes=['CLICKIMAGE_PREVIEW','CLICKIMAGE_CANCELLED','CLICKIMAGE_RESOLVING'];
   if (!(isPanel?panelTypes:contentTypes).includes(message.type)) return;
   // Waiting for a newly opened image must not block collection/download locks.
@@ -206,7 +195,6 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     if (isPanel) {
       if (message.type==='CLICKIMAGE_SELECT') return activate(tabId);
       if (message.type==='CLICKIMAGE_CONFIRM') return confirm(tabId,message.itemId);
-      if(message.type==='CLICKIMAGE_CONFIRM_PNG')return confirmPng(tabId,message);
       if (message.type==='CLICKIMAGE_CONFIRM_ALL') return startBatch(tabId,message.titles);
       const current=await state(tabId);
       if (message.type==='CLICKIMAGE_CLEAR_ALL') {
@@ -222,7 +210,6 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
           const [download]=await chrome.downloads.search({id:item.downloadId});
           if (download && ['complete','interrupted'].includes(download.state)) await finishDownload(download.id,download.state);
         }
-        for(const item of current.items.filter(image=>image.pngStatus==='downloading' && Number.isInteger(image.pngDownloadId))){const [download]=await chrome.downloads.search({id:item.pngDownloadId});if(download && ['complete','interrupted'].includes(download.state))await finishDownload(download.id,download.state);}
         const latest=await state(tabId);
         if (latest.batch?.running && !latest.batch.activeId) scheduleBatch(tabId);
         return {ok:true,state:await state(tabId)};

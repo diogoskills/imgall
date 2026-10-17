@@ -1,8 +1,28 @@
 # ClickImage
 
-## Biblioteca — versão 2.10.0
+## ClickImage — versão 2.11.0
 
 A coleta temporária do painel continua funcionando. A Biblioteca permanente abre em uma janela independente e usa armazenamento local, sem contas, backend ou sincronização em nuvem.
+
+### Downloads, leitura e abas
+
+A leitura usada por **ZIP** e **Salvar na Biblioteca** ocorre na página interna da extensão, pela função compartilhada `ClickImageZip.readImage()`. O download individual usa `chrome.downloads`. Até a 2.10 o manifesto não concedia leitura aos CDNs do YouTube: uma imagem podia aparecer na prévia ou baixar individualmente e ainda falhar no `fetch()` do ZIP. A 2.11 declara somente **`https://i.ytimg.com/*` e `https://img.youtube.com/*`** como permissões de host. Não há proxy, permissão geral para todos os sites ou mudança no contexto dos outros sites.
+
+Thumbnails estáticas conhecidas do YouTube são verificadas pelos bytes e resposta HTTP. Se `maxresdefault` responder 404/410 ou for um placeholder pequeno, são tentadas as versões inferiores do mesmo vídeo/host, em ordem: `sddefault`, `hqdefault`, `mqdefault`, `default`. Uma URL construída só é usada após a leitura ter sucesso; não se trocam IDs de vídeos, credenciais ou parâmetros assinados. O individual também verifica essas thumbnails no worker e mantém a URL efetivamente encontrada. Se a leitura falhar por rede/CORS sem resposta HTTP, o download individual ainda pode ser tentado diretamente pela API do Chrome; essa exceção não transforma um ZIP com falha em sucesso.
+
+Erros HTTP 401, 403, 404/410 e demais respostas têm mensagens diferentes. O navegador não permite distinguir com segurança CORS de toda falha de rede (`TypeError`): a mensagem informa essa ambiguidade. Sem conexão conhecida, a interface informa a ausência de internet. Para outros hosts sem permissão, ZIP/Biblioteca dependem da autorização CORS do site; o download individual pode funcionar independentemente. Não se contornam autenticação ou conteúdo protegido.
+
+Nomes usam os helpers compartilhados de `image-utils.js`: individual preserva o nome original ou o título personalizado e o formato efetivo; **ZIP geral = `ClickImage.zip`**; **ZIP de pasta = nome da pasta**. Nomes repetidos no mesmo lote recebem `(2)`, `(3)`; o Chrome também usa `conflictAction: uniquify` para arquivos existentes. O nome solicitado dos blobs é registrado antes do download e reaplicado no evento `onDeterminingFilename`, evitando depender do UUID da URL temporária. Só páginas internas autorizadas podem registrar nomes, sem caminhos de diretório.
+
+**Abrir imagem** e o clique do meio na Pasta abrem uma aba **em segundo plano**, sem ativá-la ao terminar de carregar. O zoom é configurado para 100% exclusivamente nessa aba. Imagens já salvas na Biblioteca continuam usando o visualizador local dos bytes originais; o Chrome pode limitar o ajuste de zoom, sem alterar o zoom global.
+
+### Pasta automática, identidade e controles
+
+A primeira imagem coletada abre a área **Pasta** automaticamente. Ao desligá-la manualmente, a escolha é salva e respeitada nas próximas imagens, abas e reaberturas até o usuário ligá-la de novo. O seletor continua exigindo **Caçar imagem** para começar.
+
+A conversão **PNG Beta** foi removida dos cartões, das mensagens e da lógica experimental; imagens PNG originais continuam sendo reconhecidas, salvas e exportadas normalmente.
+
+A marca vetorial que já existia no cabeçalho foi preservada em `assets/clickimage-logo.svg`, com uma cópia PNG de 512 px para reutilização. Os ícones 16/32/48/128 foram derivados dela e `icons/32.png` é o favicon das três páginas internas. Fontes e materiais de divulgação ficam fora do ZIP de publicação.
 
 ### Exportar Biblioteca .json / Importar Biblioteca .json
 
@@ -14,7 +34,7 @@ A orientação mais recente de aceitar somente JSON prevalece sobre o pedido ant
 
 ### ZIPs com manifesto
 
-**Baixar .ZIP**, o botão fixo **.ZIP** e o ZIP do botão principal da Biblioteca compartilham a mesma exportação. Agora todos incluem um `manifest.json` interno com versão do formato, hierarquia, arquivos, metadados e relacionamentos. Esse arquivo não é o manifesto da extensão Chrome.
+**ZIP deste grupo**, **ZIP da árvore completa**, o botão fixo **.ZIP** e o ZIP do botão principal da Biblioteca compartilham a mesma exportação. Agora todos incluem um `manifest.json` interno com versão do formato, hierarquia, arquivos, metadados e relacionamentos. Esse arquivo não é o manifesto da extensão Chrome.
 
 A estrutura de subpastas é preservada, os bytes não são recomprimidos nem redimensionados, e arquivos de mesmo conteúdo entram uma vez por ZIP. Os vínculos em várias pastas continuam registrados no manifesto. Nomes de diretórios/arquivos são tornados seguros e únicos. Selecionar pai e filho não gera ZIPs repetidos. Pastas vazias também podem ser exportadas: o manifesto preserva sua estrutura.
 
@@ -22,8 +42,19 @@ Vários grupos selecionados geram um ZIP por raiz, com até **128 MB de imagens 
 
 ### Árvore e organização
 
+A mesma estrutura de pastas recebe um campo opcional `kind`, sem recriar o banco ou transferir imagens existentes:
+
+- **G — Grupo:** recebe imagens, pode conter subgrupos e aparece com identificação roxa.
+- **C — Conjunto:** organiza grupos/subgrupos/conjuntos; exibe cartões de pastas e não recebe imagens diretamente. O botão **C+** cria um conjunto. **+** dentro de um conjunto cria um grupo; o menu permite criar qualquer tipo interno.
+- **S — Subgrupo:** recebe imagens e pode conter outros subgrupos; usa uma identificação azul discreta. **+** dentro de grupo/subgrupo cria um subgrupo.
+
+Dados anteriores sem `kind` continuam nos mesmos lugares: raízes são lidas como Grupo e filhos como Subgrupo. Nenhuma pasta antiga vira Conjunto automaticamente, o que poderia invalidar suas imagens diretas. Os três tipos são preservados no JSON e no manifesto ZIP. Movimentar/salvar imagens diretamente em Conjuntos é recusado também no armazenamento; eles ficam fora do seletor de destino das imagens.
+
+Ao abrir um Conjunto, aparecem seus grupos como cartões. Grupos e Subgrupos mostram suas imagens diretas e cartões dos filhos. O menu oferece **Baixar imagens deste grupo** e **ZIP deste grupo** para o conteúdo direto, além de **Baixar imagens da árvore** e **ZIP da árvore completa** quando há descendentes. Conjuntos oferecem as opções da árvore. Sem filhos, opções redundantes não aparecem. Grupos sem imagens diretas mostram aviso e oferecem baixar a árvore quando houver imagens nela.
+
+
 - Grupos, subgrupos e imagens aparecem em árvore com recuos, linhas-guia, ícones, seleção e contagem de imagens únicas considerando os descendentes.
-- Crie grupos de primeiro nível com **+** e subgrupos dentro de qualquer pasta com o botão correspondente ou o menu de contexto. Até **32 níveis** são permitidos; ciclos, pais inexistentes e nomes duplicados entre irmãos são rejeitados.
+- Crie grupos de primeiro nível com **+**, conjuntos com **C+** e estruturas internas com o botão correspondente ou o menu de contexto. Até **32 níveis** são permitidos; ciclos, pais inexistentes e nomes duplicados entre irmãos são rejeitados.
 - Expanda/recolha com as setas. A preferência é salva. A árvore carrega inicialmente até 120 referências de imagem; **Mostrar mais itens** revela outras, mantendo todas as pastas disponíveis. A grade mantém seu carregamento progressivo de 60 cartões.
 - **Ctrl + clique** alterna seleção e **Shift + clique** seleciona um intervalo visível. Marcar um grupo inclui sua árvore. As caixas indicam seleção parcial; ao desmarcar um grupo, escolhas explícitas feitas separadamente podem permanecer selecionadas. **Selecionar todas** permite marcar/desmarcar o acervo ativo.
 - A seleção é compartilhada entre árvore e cartões. Downloads, movimentos, agrupamento e exclusão removem sobreposições entre pais/filhos; a quantidade de imagens conta conteúdo único.
@@ -31,7 +62,7 @@ Vários grupos selecionados geram um ZIP por raiz, com até **128 MB de imagens 
 - **Delete** exclui a seleção de imagens ou grupos, com confirmação. Grupos incluem todos os descendentes na confirmação. O atalho não apaga a Biblioteca inteira. Atalhos só são interceptados nas áreas de itens/seleção, não em campos de texto, seletores, diálogos ou no Chrome.
 - O botão direito oferece abrir/expandir, renomear, criar subgrupo, mover, ZIP e excluir para pastas; abrir imagem, copiar URL disponível, mover, agrupar, baixar e excluir para imagens. Campos de texto mantêm seu menu nativo.
 
-Os cartões mostram a pasta aberta; a árvore e sua contagem deixam visíveis os descendentes. Movimentos e exclusões usam as mesmas funções transacionais, inclusive para ações individuais antigas. Dados do esquema IndexedDB **2** continuam no lugar: não foi necessário recriar o banco. `parentId` já suportava a hierarquia; `order` é opcional e os registros anteriores recebem ordenação estável sem regravação destrutiva.
+Os cartões de imagens mostram o conteúdo direto da pasta aberta; a árvore e sua contagem deixam visíveis os descendentes. Movimentos e exclusões usam as mesmas funções transacionais, inclusive para ações individuais antigas. Dados do esquema IndexedDB **2** continuam no lugar: não foi necessário recriar o banco. `parentId` já suportava a hierarquia; `order` é opcional e os registros anteriores recebem ordenação estável sem regravação destrutiva.
 
 ### Limpeza total, visual e segurança
 
@@ -58,11 +89,11 @@ npm run test:library
 npm run build
 ```
 
-Os testes usam Chromium, IndexedDB em disco, codecs e eventos físicos reais. APIs Chrome de janelas/downloads/preferências são simuladas; instalação nativa, atualização na máquina do usuário e sites autenticados precisam de homologação manual. A suíte da Biblioteca verifica hierarquia, seleção, atalhos, menus, manifesto ZIP, JSON, limpeza confirmada, colunas, acessibilidade da animação e persistência.
+Os testes usam Chromium, IndexedDB em disco, codecs e eventos físicos reais. Há casos de respostas HTTP, fallback estático, nomes de blobs, abas em segundo plano, Pasta automática/manual, tipos G/C/S, escopos direto/árvore e PNG Beta ausente. APIs Chrome de janelas/downloads/preferências e respostas CDN são simuladas. O binário Chromium disponível não carregou a extensão nativamente: CORS com permissão efetiva, nomes finais dos downloads, atualização e sites autenticados precisam ser conferidos no Chrome instalado. A suíte da Biblioteca verifica hierarquia, seleção, atalhos, menus, manifesto ZIP, JSON, limpeza confirmada, colunas, acessibilidade da animação e persistência.
 
-O pacote é **`dist/ClickImage-2.10.0.zip`**, com arquivos necessários e manifesto Chrome na raiz, sem testes, documentos, Git ou dados locais. Nenhuma publicação automática na loja é realizada. Atualize na mesma pasta/ID e use **Recarregar**, sem remover a extensão; feche e reabra as janelas antigas da Biblioteca.
+O pacote é **`dist/ClickImage-2.11.0.zip`**, com arquivos necessários e manifesto Chrome na raiz, sem testes, documentos, Git ou dados locais. Nenhuma publicação automática na loja é realizada. Atualize na mesma pasta/ID e use **Recarregar**, sem remover a extensão; feche e reabra as janelas antigas da Biblioteca.
 
-O restante deste README descreve o seletor e recursos anteriores; os fluxos acima prevalecem para a Biblioteca 2.10.
+O restante deste README descreve o seletor e recursos anteriores; os fluxos acima prevalecem para a versão 2.11. Recursos experimentais PNG e ativação de abas descritos no histórico abaixo foram substituídos pelos comportamentos atuais.
 
 
 Extensão Manifest V3 para baixar o recurso de uma imagem selecionada na página, sem screenshots, recortes ou processamento do arquivo. JavaScript puro, HTML5, CSS3 e APIs do Chrome; sem servidor, telemetria ou código remoto; a Biblioteca usa IndexedDB local.
@@ -211,15 +242,14 @@ Esta etapa tem um checkpoint independente na branch `checkpoint/v1-media-gallery
 
 ### V2 — ações e layouts (2.5)
 
-- O ícone de cópia copia a URL completa do recurso original encontrado, preservando seus parâmetros. A assinatura dessa URL pode expirar; não são copiados nomes ou URLs do PNG convertido.
-- Os layouts **Lista**, **Compacto** e **Grade** mantêm a mesma coleção, nomes e controles. A preferência de layout é guardada localmente; as imagens continuam apenas na sessão. A galeria da V1 permanece disponível em todos os layouts.
+- O ícone de cópia copia a URL completa do recurso original encontrado, preservando seus parâmetros. A assinatura dessa URL pode expirar; o nome personalizado não altera essa URL.
+- Os layouts atuais **Lista** e **Grade** mantêm a mesma coleção, nomes e controles; Compacto, disponível na 2.5, foi removido na 2.6. A preferência de layout é guardada localmente; as imagens continuam apenas na sessão. A galeria da V1 permanece disponível em todos os layouts.
 - A lupa abre uma **pesquisa reversa no Google Lens**. Essa ação envia a URL ao Google somente após seu clique; imagens privadas que dependem de login podem não ser acessíveis ao buscador. Não há pesquisa automática nem envio silencioso de arquivos.
-- **PNG (beta)** aparece para WebP identificado. A conversão usa os codecs locais do Chrome e mantém a resolução; produz um PNG separado e preserva a possibilidade de baixar o original. Não usa servidor, não redimensiona e não requer permissões de acesso permanente aos sites.
-- A beta aceita WebP estático de até 16 MB e 16 megapixels, com PNG resultante de até 16 MB. WebP animado não é convertido. Bloqueios CORS, autenticação e expiração de URL são respeitados: a interface informa a falha e o download original continua disponível. PNG pode ficar maior; perfis de cor e metadados são tratados pelo codec do navegador, sem promessa de preservar metadados do WebP.
+- A conversão PNG Beta, introduzida na 2.5, foi removida na 2.11. O download dos PNGs originais permanece disponível.
 
 **Verificação de redes sociais:** tentativas reais de acesso a Facebook, Twitter e X receberam HTTP 403 do proxy do ambiente. Isso impede afirmar validação de posts reais ou de sessões autenticadas. `tests/social.cjs` reproduz estruturas representativas de Facebook, X e Instagram para testar camada transparente, lazy srcset, maior variante declarada, parâmetros assinados e cancelamento. O seletor genérico continua sem regras invasivas específicas de cada site; apenas recursos publicados no HTML e acessíveis ao navegador são usados. Sites com canvas, frames inacessíveis, galerias privadas ou originais não declarados continuam sujeitos às limitações documentadas.
 
-Para testar as ações e a conversão local, execute `node tests/panel.cjs`. Para as estruturas de redes sociais, execute `node tests/social.cjs`. As APIs Chrome são simuladas nos testes de interface; a abertura de tabs, área de transferência e downloads nativos ainda devem ser conferidos no Chrome local.
+Para testar as ações da interface, execute `node tests/panel.cjs`. Para as estruturas de redes sociais, execute `node tests/social.cjs`. As APIs Chrome são simuladas nos testes de interface; a abertura de tabs, área de transferência e downloads nativos ainda devem ser conferidos no Chrome local.
 
 **Retomar a V1:** use a branch publicada `checkpoint/v1-media-gallery`, commit `344f2b15ea7172c1e7e00009b3406faf8e45c409`. Ela contém somente tamanho do recurso e coluna de galeria sobre as funcionalidades anteriores. A V2 é um commit separado em `work`; nenhuma reescrita de histórico foi feita.
 
@@ -240,7 +270,7 @@ Posters estáticos declarados em `video[poster]` podem ser selecionados pelo flu
 ### Abrir originais e escolher o lote (2.6)
 
 - **Abrir imagem**, ao lado de Copiar URL e Pesquisar, abre diretamente a URL completa do arquivo original em uma nova aba. Na Pasta, o clique normal continua localizando o cartão; o **botão do meio** abre o arquivo. Nenhuma URL é reescrita e nenhum download começa por essa ação.
-- A aba é criada em segundo plano, aguarda o carregamento (até 15 segundos), recebe `setZoomSettings` com escopo **per-tab** e zoom **100%**, e então é ativada. Se o Chrome não permitir configurar o zoom, a imagem ainda abre e há feedback. Não há alteração de zoom global ou por domínio. **100% de zoom da aba não desativa o ajuste nativo de imagens grandes à janela:** no visualizador do Chrome, clique na imagem para alternar entre ajuste e tamanho real. Escala do sistema, densidade da tela, carregamentos demorados e políticas do navegador também limitam a garantia de pixels físicos em 1:1. O arquivo original permanece intacto.
+- A aba é criada em segundo plano, aguarda o carregamento (até 15 segundos), recebe `setZoomSettings` com escopo **per-tab** e zoom **100%**, e permanece em segundo plano. Se o Chrome não permitir configurar o zoom, a imagem ainda abre e há feedback. Não há alteração de zoom global ou por domínio. **100% de zoom da aba não desativa o ajuste nativo de imagens grandes à janela:** no visualizador do Chrome, clique na imagem para alternar entre ajuste e tamanho real. Escala do sistema, densidade da tela, carregamentos demorados e políticas do navegador também limitam a garantia de pixels físicos em 1:1. O arquivo original permanece intacto.
 - A visualização oferece apenas **Lista** e **Grade**. As duas preferências existentes são preservadas; uma preferência antiga de Compacto é migrada e salva como Lista. A Pasta continua disponível nos dois modos.
 - **Baixar todas** (a partir de quatro imagens, como antes) abre duas opções. **Imagens individuais** reutiliza a fila existente: downloads em sequência, nomes do usuário, arquivos já baixados ignorados, URLs repetidas excluídas e `conflictAction: uniquify`. **Arquivo ZIP** inclui os arquivos selecionados, inclusive aqueles já baixados individualmente, sem alterar o estado desses downloads. Não há conversão WebP para PNG automática.
 
@@ -250,7 +280,7 @@ A preparação lê um arquivo por vez e mostra quantidade verificada, incluída 
 
 **Limites e ciclo de vida:** para limitar consumo de memória, cada recurso pode ter até **32 MB**, o conjunto até **128 MB** (mais cabeçalhos ZIP) e até **1.000 URLs únicas**; a leitura de cada recurso tem limite de 20 segundos. Arquivos que ultrapassam esses limites geram falhas individuais, preservando os já incluídos. A preparação roda no painel: mantenha-o visível na mesma aba até aparecer **ZIP salvo**. Fechar/ocultar o painel, trocar a aba ou limpar a coleção cancela a preparação; ZIPs já solicitados podem continuar no Chrome, mas devem ser conferidos nos downloads se o painel for fechado durante a gravação. O ZIP não é retomado após o fechamento. Clicar novamente após concluir solicita uma nova exportação; enquanto ela está em andamento, o botão fica bloqueado.
 
-**Testes:** `npm test` verifica interoperabilidade com `zipfile` do Python, CRC, bytes intactos, nomes Unicode, deduplicação por URL, falhas parciais, cancelamento e zoom isolado com APIs simuladas. `node tests/panel.cjs` verifica o botão de abrir, clique do meio, migração de layout, escolha de lote e geração de ZIP no Chromium. Downloads nativos, comportamento do visualizador e zoom de uma extensão instalada precisam ser conferidos no Chrome local: neste ambiente, as APIs Chrome são simuladas nos testes de interface. Nenhuma permissão nova foi adicionada.
+**Testes:** `npm test` verifica interoperabilidade com `zipfile` do Python, CRC, bytes intactos, nomes Unicode, deduplicação por URL, falhas parciais, cancelamento e zoom isolado com APIs simuladas. `node tests/panel.cjs` verifica o botão de abrir, clique do meio, migração de layout, escolha de lote e geração de ZIP no Chromium. Downloads nativos, comportamento do visualizador e zoom de uma extensão instalada precisam ser conferidos no Chrome local: neste ambiente, as APIs Chrome são simuladas nos testes de interface. As permissões restritas de leitura do YouTube adicionadas na 2.11 estão descritas no início deste documento.
 
 ### Checkpoint geral antes do backend
 
