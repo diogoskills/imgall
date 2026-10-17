@@ -1080,6 +1080,156 @@
  Object.assign(messages,{Grupo:{en:'Group',es:'Grupo'},Conjunto:{en:'Set',es:'Conjunto'}});
  Object.assign(messages,{'A Biblioteca aceita imagens de até 64 megapixels e 32.768 px por lado. O download original continua disponível.':{en:'The Library supports images up to 64 megapixels and 32,768 px per side. The original download is still available.',es:'La Biblioteca admite imágenes de hasta 64 megapíxeles y 32.768 px por lado. La descarga original sigue disponible.'}});
  Object.assign(messages,{'Seleção ativa · clique apenas em imagens · Parar seleção ou ESC para navegar':{en:'Selection active · click images only · Stop selection or ESC to browse',es:'Selección activa · haz clic solo en imágenes · Detener selección o ESC para navegar'}});
+ Object.assign(messages,{
+ "Exportar Biblioteca .json": {
+  "en": "Export Library .json",
+  "es": "Exportar Biblioteca .json"
+ },
+ "Importar Biblioteca .json": {
+  "en": "Import Library .json",
+  "es": "Importar Biblioteca .json"
+ },
+ "Subgrupo": {
+  "en": "Subgroup",
+  "es": "Subgrupo"
+ },
+ "Nome do subgrupo": {
+  "en": "Subgroup name",
+  "es": "Nombre del subgrupo"
+ },
+ "Mostrar mais itens": {
+  "en": "Show more items",
+  "es": "Mostrar más elementos"
+ },
+ "Colunas": {
+  "en": "Columns",
+  "es": "Columnas"
+ },
+ "Agrupar": {
+  "en": "Group",
+  "es": "Agrupar"
+ },
+ "Selecionar {name}": {
+  "en": "Select {name}",
+  "es": "Seleccionar {name}"
+ },
+ "{count} imagens selecionadas": {
+  "en": "{count} images selected",
+  "es": "{count} imágenes seleccionadas"
+ },
+ "Criar subgrupo": {
+  "en": "Create subgroup",
+  "es": "Crear subgrupo"
+ },
+ "Criar grupo dentro deste": {
+  "en": "Create group inside this one",
+  "es": "Crear grupo dentro de este"
+ },
+ "Grupos incluem todos os descendentes no ZIP.": {
+  "en": "Groups include all descendants in the ZIP.",
+  "es": "Los grupos incluyen todos los descendientes en el ZIP."
+ },
+ "Gerenciar Bibliotecas": {
+  "en": "Manage Libraries",
+  "es": "Administrar Bibliotecas"
+ },
+ "Apagar todos os dados da Biblioteca": {
+  "en": "Erase all Library data",
+  "es": "Borrar todos los datos de la Biblioteca"
+ },
+ "Todas as Bibliotecas, grupos e imagens locais serão apagados. Downloads e configurações gerais serão preservados.": {
+  "en": "All Libraries, groups and local images will be erased. Downloads and general settings will be kept.",
+  "es": "Se borrarán todas las Bibliotecas, grupos e imágenes locales. Se conservarán las descargas y los ajustes generales."
+ },
+ "Digite APAGAR para confirmar.": {
+  "en": "Type APAGAR to confirm.",
+  "es": "Escribe APAGAR para confirmar."
+ },
+ "Apagar tudo": {
+  "en": "Erase all",
+  "es": "Borrar todo"
+ },
+ "Dados da Biblioteca apagados. Downloads e configurações gerais preservados.": {
+  "en": "Library data erased. Downloads and general settings kept.",
+  "es": "Datos de la Biblioteca borrados. Descargas y ajustes generales conservados."
+ },
+ "Ações do item": {
+  "en": "Item actions",
+  "es": "Acciones del elemento"
+ },
+ "Abrir / Expandir": {
+  "en": "Open / Expand",
+  "es": "Abrir / Expandir"
+ },
+ "Renomear": {
+  "en": "Rename",
+  "es": "Renombrar"
+ },
+ "Mover para outro grupo": {
+  "en": "Move to another group",
+  "es": "Mover a otro grupo"
+ },
+ "Baixar .ZIP": {
+  "en": "Download .ZIP",
+  "es": "Descargar .ZIP"
+ },
+ "Excluir": {
+  "en": "Delete",
+  "es": "Eliminar"
+ },
+ "Mover para grupo": {
+  "en": "Move to group",
+  "es": "Mover a grupo"
+ },
+ "Criar grupo com esta imagem": {
+  "en": "Create group with this image",
+  "es": "Crear grupo con esta imagen"
+ },
+ "Excluir os grupos selecionados, todos os subgrupos e imagens descendentes? As outras Bibliotecas serão preservadas.": {
+  "en": "Delete the selected groups and all descendant subgroups and images? Other Libraries will be kept.",
+  "es": "¿Eliminar los grupos seleccionados y todos sus subgrupos e imágenes? Se conservarán las otras Bibliotecas."
+ },
+ "Excluir as imagens selecionadas?": {
+  "en": "Delete the selected images?",
+  "es": "¿Eliminar las imágenes seleccionadas?"
+ },
+ "Itens agrupados no ancestral comum mais próximo.": {
+  "en": "Items grouped under their nearest common ancestor.",
+  "es": "Elementos agrupados bajo su ancestro común más cercano."
+ },
+ "Backup JSON salvo.": {
+  "en": "JSON backup saved.",
+  "es": "Copia JSON guardada."
+ },
+ "Selecione um backup .json do ClickImage. Arquivos ZIP não são aceitos na importação.": {
+  "en": "Select a ClickImage .json backup. ZIP files are not accepted for import.",
+  "es": "Selecciona una copia .json de ClickImage. No se aceptan archivos ZIP para importar."
+ },
+ "O backup JSON aceita até 16 MB de imagens. Use ZIP para exportar coleções maiores.": {
+  "en": "JSON backups support up to 16 MB of images. Use ZIP to export larger collections.",
+  "es": "Las copias JSON admiten hasta 16 MB de imágenes. Usa ZIP para exportar colecciones mayores."
+ },
+ "Hierarquia inválida ou acima de 32 níveis.": {
+  "en": "Invalid hierarchy or more than 32 levels.",
+  "es": "Jerarquía inválida o de más de 32 niveles."
+ },
+ "Selecione itens para agrupar.": {
+  "en": "Select items to group.",
+  "es": "Selecciona elementos para agrupar."
+ },
+ "Escolha uma pasta para as imagens.": {
+  "en": "Choose a folder for the images.",
+  "es": "Elige una carpeta para las imágenes."
+ },
+ "Copiar grupos não está disponível. Use mover.": {
+  "en": "Copying groups is unavailable. Use move.",
+  "es": "No se pueden copiar grupos. Usa mover."
+ },
+ "Confirme a exclusão de todas as Bibliotecas.": {
+  "en": "Confirm deletion of all Libraries.",
+  "es": "Confirma la eliminación de todas las Bibliotecas."
+ }
+});
  const languages=['pt-BR','en','es'];let language='pt-BR';const listeners=new Set();
  function t(source,values={}){
   if(typeof source!=='string')return source || '';

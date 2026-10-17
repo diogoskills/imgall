@@ -1,5 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
-function setup(){const context={btoa,atob,URL,Blob,TextEncoder,TextDecoder,Uint8Array,Uint32Array,DataView,Map,Set,Promise,DOMException,crypto:require('node:crypto').webcrypto,BroadcastChannel:undefined};vm.createContext(context);for(const file of ['image-utils.js','zip-utils.js','library-store.js','library-backup.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),context);return context}
+function setup(){const context={btoa,atob,URL,Blob,TextEncoder,TextDecoder,Uint8Array,Uint32Array,DataView,Map,Set,Promise,DOMException,crypto:require('node:crypto').webcrypto,BroadcastChannel:undefined};vm.createContext(context);for(const file of ['image-utils.js','zip-utils.js','library-tree.js','library-store.js','library-backup.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),context);return context}
 test('backup ZIP reader checks structure, CRC, traversal, duplicate paths, unsupported compression and bounded input',async()=>{
  const c=setup(),z=c.ClickImageZip,b=c.ClickImageBackup,encoder=new TextEncoder();
  const entry={name:'manifest.json',bytes:encoder.encode('{}')},raw=new Uint8Array(await z.archive([entry]).arrayBuffer());
@@ -16,9 +16,9 @@ test('backup validation rejects unexpected files and versions; empty library bac
  const c=setup(),b=c.ClickImageBackup,z=c.ClickImageZip;
  const m={format:'clickimage-library',version:1,folders:[],images:[],links:[]};
  const make=(manifest,extra=[])=>z.archive([{name:'manifest.json',bytes:new TextEncoder().encode(JSON.stringify(manifest))},...extra]);
- const empty=await b.validate(make(m));assert.equal(empty.images.length,0);
- await assert.rejects(b.validate(make({...m,version:3})),/inválido/);
- await assert.rejects(b.validate(make(m,[{name:'extra.js',bytes:new Uint8Array([1])} ])),/inválido/);
+ const empty=await b.validate(make(m),()=>{},{allowZip:true});assert.equal(empty.images.length,0);
+ await assert.rejects(b.validate(make({...m,version:99}),()=>{},{allowZip:true}),/inválido/);
+ await assert.rejects(b.validate(make(m,[{name:'extra.js',bytes:new Uint8Array([1])} ]),()=>{},{allowZip:true}),/inválido/);
  await assert.rejects(b.importLibrary(make(m),{replace:true}),/nova Biblioteca/);
 });
 test('library file signatures reject HTML/SVG scripts; hashes and safe titles preserve raster originals byte-for-byte',async()=>{
@@ -29,20 +29,20 @@ test('library file signatures reject HTML/SVG scripts; hashes and safe titles pr
  assert.deepEqual(new Uint8Array(await p.asset.blob.arrayBuffer()),bytes);
 });
 
-test('v2 JSON contains original bytes and hierarchy; legacy ZIP and large ZIP fallback validate with the same importer',async()=>{
+test('JSON backup and separate ZIP manifest preserve bytes/hierarchy; JSON-only import rejects ZIP',async()=>{
  const c=setup(),L=c.ClickImageLibrary,B=c.ClickImageBackup,Z=c.ClickImageZip;
  const png=new Uint8Array(fs.readFileSync(path.join(__dirname,'../icons/128.png'))),record=await L.prepare(png,{title:'Original'});
  const folders=[{id:'group',name:'Grupo',parentId:null},{id:'set',name:'Conjunto',parentId:'group'}],links=[{folderId:'set',imageId:record.image.id,title:'Original',createdAt:1}];
  L.backupData=async()=>({library:{id:'main',name:'Design'},folders,images:[record.image],assets:[record.asset],links});
- const blob=await B.exportLibrary();assert.equal(blob.type,'application/json');const m=JSON.parse(await blob.text());assert.equal(m.library.name,'Design');assert.equal(m.version,2);assert.equal(m.images[0].data,Buffer.from(png).toString('base64'));assert.equal(m.folders[1].parentId,'group');
+ const blob=await B.exportLibrary();assert.equal(blob.type,'application/json');const m=JSON.parse(await blob.text());assert.equal(m.library.name,'Design');assert.equal(m.version,3);assert.equal(m.images[0].data,Buffer.from(png).toString('base64'));assert.equal(m.folders[1].parentId,'group');
  L.backupData=async()=>({library:{id:'main',name:'Design'},folders,images:[record.image],assets:[],links});let failures=0;const missingExport=await B.exportLibrary(p=>failures=p.failed);assert.equal(failures,1);assert.equal((await B.validate(missingExport)).failures.length,1);
  const parsed=await B.validate(blob);assert.equal(parsed.name,'Design');assert.equal(parsed.links.length,1);assert.deepEqual(new Uint8Array(await parsed.images[0].asset.blob.arrayBuffer()),png);
- for(const patch of [{version:3},{folders:m.folders.map(f=>({...f,parentId:f.id}))},{images:m.images.map(i=>({...i,data:'%%%%'}))},{images:m.images.map(i=>({...i,sizeBytes:9999}))}])await assert.rejects(B.validate(new Blob([JSON.stringify({...m,...patch})])),/inválido/);
+ for(const patch of [{version:99},{folders:m.folders.map(f=>({...f,parentId:f.id}))},{images:m.images.map(i=>({...i,data:'%%%%'}))},{images:m.images.map(i=>({...i,sizeBytes:9999}))}])await assert.rejects(B.validate(new Blob([JSON.stringify({...m,...patch})])),/inválido/);
  const missing={...m,images:m.images.map(i=>({...i,data:null,unavailable:true}))};const partial=await B.validate(new Blob([JSON.stringify(missing)]));assert.equal(partial.images.length,0);assert.equal(partial.failures[0].name,'Original');
  const large=new Uint8Array(16*1024*1024+1);large.set(png);const big=await L.prepare(large);L.backupData=async()=>({library:{id:'big',name:'Grande'},folders,images:[big.image],assets:[big.asset],links:[{...links[0],imageId:big.image.id}]});
- const zip=await B.exportLibrary();assert.equal(zip.type,'application/zip');const validated=await B.validate(zip);assert.equal(validated.name,'Grande');assert.equal(validated.images[0].image.sizeBytes,large.length);assert.equal(Z.crc32(new Uint8Array(await validated.images[0].asset.blob.arrayBuffer())),Z.crc32(large));
+ await assert.rejects(B.exportLibrary(),/16 MB/);const result=await B.exportSelection('big',{folderIds:['group']});const zip=result.blob;assert.equal(zip.type,'application/zip');const validated=await B.validate(zip,()=>{},{allowZip:true});assert.equal(validated.name,'Grande');assert.equal(validated.images[0].image.sizeBytes,large.length);assert.equal(Z.crc32(new Uint8Array(await validated.images[0].asset.blob.arrayBuffer())),Z.crc32(large));
  const legacy={format:'clickimage-library',version:1,folders:[{id:'old',name:'Antiga'}],images:[{id:record.image.id,path:'images/'+record.image.id+'.png'}],links:[{...links[0],folderId:'old'}]};
- const oldZip=Z.archive([{name:'manifest.json',bytes:new TextEncoder().encode(JSON.stringify(legacy))},{name:legacy.images[0].path,bytes:png}]);const old=await B.validate(oldZip);assert.equal(old.name,'Minhas referências');assert.equal(old.images.length,1);
+ const oldZip=Z.archive([{name:'manifest.json',bytes:new TextEncoder().encode(JSON.stringify(legacy))},{name:legacy.images[0].path,bytes:png}]);const old=await B.validate(oldZip,()=>{},{allowZip:true});assert.equal(old.name,'Minhas referências');assert.equal(old.images.length,1);
 });
 
 test('imports ignore remote URL/prototype payloads, treat names as data and reject active file payloads',async()=>{

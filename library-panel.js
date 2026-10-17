@@ -15,7 +15,7 @@
   const libraries=dialog.querySelector('.library-destination select'),select=dialog.querySelector('.destination-label select'),buttons=dialog.querySelectorAll('.dialog-actions button'),add=dialog.querySelector('.new-folder'),error=dialog.querySelector('.dialog-error');
   buttons[0].textContent=t('Cancelar');buttons[0].formNoValidate=true;buttons[1].textContent=t('Salvar');add.textContent=t('Novo grupo');
   let snapshot;
-  const loadFolders=selected=>{select.replaceChildren(...snapshot.folders.filter(f=>f.libraryId===libraries.value).map(folder=>new Option((folder.parentId?(snapshot.folders.find(f=>f.id===folder.parentId)?.name+' / '):'')+folder.name,folder.id)));if(selected&&[...select.options].some(o=>o.value===selected))select.value=selected};
+  const loadFolders=selected=>{select.replaceChildren(...snapshot.folders.filter(f=>f.libraryId===libraries.value).map(folder=>new Option(ClickImageTree.ancestors(snapshot.folders,folder.id).map(f=>f.name).join(' / '),folder.id)));if(selected&&[...select.options].some(o=>o.value===selected))select.value=selected};
   const load=async selected=>{
    const previous=libraries.value;snapshot=await ClickImageLibrary.snapshot();let prefs={};try{prefs=await chrome.storage.local.get(['clickimageActiveLibrary','clickimageLibraryDestination'])}catch{}
    const destination=prefs.clickimageLibraryDestination;

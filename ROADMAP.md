@@ -1,5 +1,12 @@
 # Roadmap do ClickImage
 
+## Entregue — 2.10
+
+- [x] Árvore multinível, guias e seleção parcial/total compartilhada.
+- [x] Atalhos, menus de contexto e agrupamento seguro por ancestral comum.
+- [x] JSON explícito da Biblioteca e manifesto em todos os ZIPs de imagens.
+- [x] Limpeza total confirmada, Grade de até três colunas e Donate acessível.
+
 ## Entregue — 2.9
 
 - [x] Bibliotecas independentes com migração segura e nomes únicos nas importações.

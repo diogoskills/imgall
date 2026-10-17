@@ -2,6 +2,7 @@
 // hashing/network/backup validation happens before it, so interruption rolls back.
 (function(root){
  'use strict';
+ const T=root.ClickImageTree;
  const DB='clickimage-library',VERSION=2,DEFAULT='references',MAIN='main',MAX_BYTES=512*1024*1024,MAX_IMAGES=5000,MAX_FOLDERS=200,MAX_LINKS=20000;
  const stores=['libraries','folders','images','assets','links'];let connection;
  const request=req=>new Promise((resolve,reject)=>{req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)});
@@ -33,7 +34,7 @@
  }
  async function data(api){const [libraries,folders,images,links]=await Promise.all(['libraries','folders','images','links'].map(name=>request(api[name].getAll())));return {libraries,folders,images,links}}
  function folderName(raw){const name=typeof raw==='string'?raw.trim().normalize('NFC'):'';if(!name || name.length>80 || /[\x00-\x1f]/.test(name))throw new Error('Digite um nome de pasta de até 80 caracteres.');return name}
- function descendants(folders,id){const found=new Set([id]);let changed=true;while(changed){changed=false;for(const folder of folders)if(folder.parentId&&found.has(folder.parentId)&&!found.has(folder.id)){found.add(folder.id);changed=true}}return found}
+ const descendants=T.descendants;
  function requireFolder(d,id){if(!d.folders.some(f=>f.id===id))throw new Error('Pasta não encontrada.');}
  function limits(d){if(d.libraries.length>50 || d.folders.length>MAX_FOLDERS || d.links.length>MAX_LINKS || d.images.length>MAX_IMAGES || d.images.reduce((n,i)=>n+i.sizeBytes,0)>MAX_BYTES)throw new Error('Limite local: 50 Bibliotecas, 200 pastas, 5.000 imagens, 20.000 referências e 512 MB. Exporte um backup ou remova referências.');}
  function cleanOrphans(api,d){const kept=new Set(d.links.map(l=>l.imageId));for(const image of d.images)if(!kept.has(image.id)){api.images.delete(image.id);api.assets.delete(image.id)}}
@@ -43,10 +44,44 @@
  function requireLibrary(d,id){if(!d.libraries.some(l=>l.id===id))throw new Error('Biblioteca não encontrada.');}
  async function createLibrary(name){name=libraryName(name);return transaction('readwrite',async api=>{const d=await data(api),library={id:crypto.randomUUID(),name:uniqueLibraryName(name,d.libraries),createdAt:Date.now()};d.libraries.push(library);const f={id:crypto.randomUUID(),libraryId:library.id,parentId:null,name:'Minhas referências',createdAt:Date.now()};d.folders.push(f);limits(d);api.libraries.put(library);api.folders.put(f);return library})}
  async function renameLibrary(id,name){name=libraryName(name);return transaction('readwrite',async api=>{const d=await data(api);requireLibrary(d,id);if(d.libraries.some(l=>l.id!==id&&l.name.toLocaleLowerCase()===name.toLocaleLowerCase()))throw new Error('Já existe uma Biblioteca com esse nome.');api.libraries.put({...d.libraries.find(l=>l.id===id),name})})}
- async function createFolder(name,libraryId=MAIN,parentId=null){name=folderName(name);return transaction('readwrite',async api=>{const d=await data(api);requireLibrary(d,libraryId);if(parentId){requireFolder(d,parentId);if(d.folders.find(f=>f.id===parentId).parentId)throw new Error('Crie conjuntos dentro de um grupo.');if(d.folders.find(f=>f.id===parentId).libraryId!==libraryId)throw new Error('Pasta de destino inválida.')}if(d.folders.some(f=>f.libraryId===libraryId&&(f.parentId||null)===parentId&&f.name.toLocaleLowerCase()===name.toLocaleLowerCase()))throw new Error('Já existe uma pasta com esse nome.');const folder={id:crypto.randomUUID(),name,libraryId,parentId,createdAt:Date.now()};d.folders.push(folder);limits(d);api.folders.put(folder);return folder})}
+ async function createFolder(name,libraryId=MAIN,parentId=null){name=folderName(name);return transaction('readwrite',async api=>{const d=await data(api);requireLibrary(d,libraryId);if(parentId){requireFolder(d,parentId);if(d.folders.find(f=>f.id===parentId).libraryId!==libraryId)throw new Error('Pasta de destino inválida.')}if(d.folders.some(f=>f.libraryId===libraryId&&(f.parentId||null)===parentId&&f.name.toLocaleLowerCase()===name.toLocaleLowerCase()))throw new Error('Já existe uma pasta com esse nome.');const folder={id:crypto.randomUUID(),name,libraryId,parentId,createdAt:Date.now()};d.folders.push(folder);T.validate(d.folders);limits(d);api.folders.put(folder);return folder})}
  async function renameFolder(id,name){name=folderName(name);return transaction('readwrite',async api=>{const d=await data(api);requireFolder(d,id);const folder=d.folders.find(f=>f.id===id);if(d.folders.some(f=>f.id!==id&&f.libraryId===folder.libraryId&&(f.parentId||null)===(folder.parentId||null)&&f.name.toLocaleLowerCase()===name.toLocaleLowerCase()))throw new Error('Já existe uma pasta com esse nome.');api.folders.put({...folder,name})})}
- async function moveFolder(id,parentId=null){return transaction('readwrite',async api=>{const d=await data(api);requireFolder(d,id);const folder=d.folders.find(f=>f.id===id);if(parentId){requireFolder(d,parentId);if(d.folders.find(f=>f.id===parentId).parentId||d.folders.some(f=>f.parentId===id)||d.folders.find(f=>f.id===parentId).libraryId!==folder.libraryId||descendants(d.folders,id).has(parentId))throw new Error('Uma pasta não pode ficar dentro dela mesma ou de suas subpastas.')}if(d.folders.some(f=>f.id!==id&&f.libraryId===folder.libraryId&&(f.parentId||null)===parentId&&f.name.toLocaleLowerCase()===folder.name.toLocaleLowerCase()))throw new Error('Já existe uma pasta com esse nome.');api.folders.put({...folder,parentId})})}
- async function deleteFolders(ids){return transaction('readwrite',async api=>{const d=await data(api),selected=new Set(ids.flatMap(id=>[...descendants(d.folders,id)])),affected=new Set(d.folders.filter(f=>selected.has(f.id)).map(f=>f.libraryId));d.folders=d.folders.filter(f=>!selected.has(f.id));for(const id of selected)api.folders.delete(id);for(const link of d.links)if(selected.has(link.folderId))api.links.delete([link.folderId,link.imageId]);d.links=d.links.filter(l=>!selected.has(l.folderId));for(const libraryId of affected)if(!d.folders.some(f=>f.libraryId===libraryId))api.folders.put({id:crypto.randomUUID(),libraryId,parentId:null,name:'Minhas referências',createdAt:Date.now()});cleanOrphans(api,d)})}
+ async function moveFolder(id,parentId=null){return moveItems({folderIds:[id],parentId})}
+ async function deleteFolders(ids){return deleteItems({folderIds:ids})}
+
+ async function groupItems(libraryId,{folderIds=[],imageRefs=[],name='Novo grupo'}={}){
+  name=folderName(name);return transaction('readwrite',async api=>{
+   const d=await data(api);requireLibrary(d,libraryId);const folders=d.folders.filter(f=>f.libraryId===libraryId),roots=T.roots(folders,folderIds),covered=new Set(roots.flatMap(f=>[...descendants(folders,f.id)]));
+   if(folderIds.some(id=>!folders.some(f=>f.id===id)))throw Error('Pasta de destino inválida.');
+   const refs=d.links.filter(l=>imageRefs.some(r=>r.folderId===l.folderId&&r.imageId===l.imageId)&&!covered.has(l.folderId));
+   if(refs.some(r=>!folders.some(f=>f.id===r.folderId)))throw Error('Pasta de destino inválida.');
+   if(!roots.length&&!refs.length)throw Error('Selecione itens para agrupar.');
+   const containers=[...roots.map(f=>f.parentId),...refs.map(r=>r.folderId)],paths=containers.map(id=>id?T.ancestors(folders,id).map(f=>f.id):[]);let common=[];
+   for(let i=0;i<(paths[0]?.length||0);i++){if(paths.every(path=>path[i]===paths[0][i]))common.push(paths[0][i]);else break}
+   const parentId=common.at(-1)||null,group={id:crypto.randomUUID(),libraryId,parentId,name,createdAt:Date.now(),order:folders.filter(f=>(f.parentId||null)===parentId).length};
+   d.folders.push(group);const selectedOrder=folderIds.filter(id=>roots.some(f=>f.id===id));
+   for(const f of roots){f.parentId=group.id;f.order=selectedOrder.indexOf(f.id);api.folders.put(f)}
+   api.folders.put(group);let order=0;const used=new Set();for(const r of imageRefs){const link=refs.find(l=>l.folderId===r.folderId&&l.imageId===r.imageId);if(!link)continue;api.links.delete([link.folderId,link.imageId]);d.links=d.links.filter(l=>l!==link);if(!used.has(link.imageId)){const next={...link,folderId:group.id,order:order++};d.links.push(next);api.links.put(next);used.add(link.imageId)}}
+   T.validate(d.folders);limits(d);return group;
+  });
+ }
+ async function deleteItems({folderIds=[],imageRefs=[]}={}){return transaction('readwrite',async api=>{
+  const d=await data(api),ids=new Set(folderIds.flatMap(id=>[...descendants(d.folders,id)])),affected=new Set(d.folders.filter(f=>ids.has(f.id)).map(f=>f.libraryId));
+  for(const id of ids)api.folders.delete(id);d.folders=d.folders.filter(f=>!ids.has(f.id));
+  const removed=d.links.filter(l=>ids.has(l.folderId)||imageRefs.some(r=>r.folderId===l.folderId&&r.imageId===l.imageId));for(const link of removed)api.links.delete([link.folderId,link.imageId]);d.links=d.links.filter(l=>!removed.includes(l));
+  for(const libraryId of affected)if(!d.folders.some(f=>f.libraryId===libraryId))api.folders.put({id:crypto.randomUUID(),libraryId,parentId:null,name:'Minhas referências',createdAt:Date.now()});cleanOrphans(api,d);
+ })}
+ async function moveItems({folderIds=[],imageRefs=[],parentId,copy=false}={}){return transaction('readwrite',async api=>{
+  const d=await data(api);if(parentId)requireFolder(d,parentId);const roots=T.roots(d.folders,folderIds),covered=new Set(roots.flatMap(f=>[...descendants(d.folders,f.id)])),destination=d.folders.find(f=>f.id===parentId);
+  if(covered.has(parentId))throw Error('Uma pasta não pode ficar dentro dela mesma ou de suas subpastas.');
+  if(roots.length&&copy)throw Error('Copiar grupos não está disponível. Use mover.');
+  for(const f of roots){if(destination&&destination.libraryId!==f.libraryId)throw Error('Pasta de destino inválida.');f.parentId=parentId||null;f.order=d.folders.filter(other=>other.parentId===parentId).length;api.folders.put(f)}
+  const refs=d.links.filter(l=>!covered.has(l.folderId)&&imageRefs.some(r=>r.folderId===l.folderId&&r.imageId===l.imageId));
+  if(refs.length&&!destination)throw Error('Escolha uma pasta para as imagens.');
+  for(const link of refs){if(d.folders.find(f=>f.id===link.folderId).libraryId!==destination.libraryId)throw Error('Pasta de destino inválida.');if(!d.links.some(l=>l.folderId===parentId&&l.imageId===link.imageId)){const next={...link,folderId:parentId};d.links.push(next);api.links.put(next)}if(!copy&&link.folderId!==parentId){api.links.delete([link.folderId,link.imageId]);d.links=d.links.filter(l=>l!==link)}}
+  T.validate(d.folders);limits(d);
+ })}
+ async function resetAll({confirmed=false}={}){if(!confirmed)throw Error('Confirme a exclusão de todas as Bibliotecas.');return transaction('readwrite',async api=>{for(const name of stores)api[name].clear();api.libraries.put({id:MAIN,name:'Minhas referências',createdAt:Date.now()});api.folders.put({id:crypto.randomUUID(),libraryId:MAIN,parentId:null,name:'Minhas referências',createdAt:Date.now()})})}
 
  function identify(bytes){
   let format=root.ClickImageUtils.formatFromBytes(bytes.subarray(0,64));
@@ -86,10 +121,12 @@
  }
  async function getBlob(id){return transaction('readonly',async api=>{const record=await request(api.assets.get(id));if(!record?.blob)throw new Error('O arquivo local está indisponível. Restaure um backup.');return record.blob})}
  async function renameImage(folderId,imageId,title){title=root.ClickImageUtils.safeTitle(title);if(!title)throw new Error('Digite um nome válido.');return transaction('readwrite',async api=>{const link=await request(api.links.get([folderId,imageId]));if(!link)throw new Error('Imagem removida.');api.links.put({...link,title})})}
- async function removeImages(folderId,ids){return transaction('readwrite',async api=>{const d=await data(api),selected=new Set(ids);for(const id of selected)api.links.delete([folderId,id]);d.links=d.links.filter(l=>l.folderId!==folderId||!selected.has(l.imageId));cleanOrphans(api,d)})}
- async function transfer(from,to,ids,move){return transaction('readwrite',async api=>{const d=await data(api);requireFolder(d,from);requireFolder(d,to);if(from===to)return;const selected=new Set(ids),sources=d.links.filter(l=>l.folderId===from&&selected.has(l.imageId));for(const link of sources){if(!d.links.some(l=>l.folderId===to&&l.imageId===link.imageId)){const next={...link,folderId:to};d.links.push(next);api.links.put(next)}if(move){api.links.delete([from,link.imageId]);d.links=d.links.filter(l=>l!==link)}}limits(d)})}
- async function backupData(libraryId=MAIN){return transaction('readonly',async api=>{
-  const d=await data(api);requireLibrary(d,libraryId);const library=d.libraries.find(l=>l.id===libraryId),folders=d.folders.filter(f=>f.libraryId===libraryId),folderIds=new Set(folders.map(f=>f.id)),links=d.links.filter(l=>folderIds.has(l.folderId)),ids=new Set(links.map(l=>l.imageId)),images=d.images.filter(i=>ids.has(i.id));
+ async function removeImages(folderId,ids){return deleteItems({imageRefs:ids.map(imageId=>({folderId,imageId}))})}
+ async function transfer(from,to,ids,move){return moveItems({imageRefs:ids.map(imageId=>({folderId:from,imageId})),parentId:to,copy:!move})}
+ async function backupData(libraryId=MAIN,selection=null){return transaction('readonly',async api=>{
+  const d=await data(api);requireLibrary(d,libraryId);const library=d.libraries.find(l=>l.id===libraryId);let folders=d.folders.filter(f=>f.libraryId===libraryId),links=d.links.filter(l=>folders.some(f=>f.id===l.folderId));
+  if(selection){const covered=new Set((selection.folderIds||[]).flatMap(id=>folders.some(f=>f.id===id)?[...descendants(folders,id)]:[])),refs=selection.imageRefs||[];links=links.filter(l=>covered.has(l.folderId)||refs.some(r=>r.folderId===l.folderId&&r.imageId===l.imageId));const kept=new Set(covered);for(const link of links)if(!covered.has(link.folderId))for(const f of T.ancestors(folders,link.folderId))kept.add(f.id);folders=folders.filter(f=>kept.has(f.id)).map(f=>({...f,parentId:kept.has(f.parentId)?f.parentId:null}))}
+  const ids=new Set(links.map(l=>l.imageId)),images=d.images.filter(i=>ids.has(i.id));
   if(images.reduce((n,i)=>n+i.sizeBytes,0)>root.ClickImageZip.MAX_TOTAL)throw new Error('O backup aceita até 128 MB. Exporte pastas separadamente para guardar as imagens.');
   const assets=await Promise.all(images.map(i=>request(api.assets.get(i.id))));return {library,folders,images,links,assets:assets.filter(Boolean)};
  })}
@@ -100,13 +137,13 @@
    d.libraries.push(library);api.libraries.put(library);
    const folderMap=new Map();let folderCount=0,imageCount=0;
    for(const folder of prepared.folders)folderMap.set(folder.id,crypto.randomUUID());
-   for(const folder of prepared.folders){const next={id:folderMap.get(folder.id),libraryId:library.id,parentId:folder.parentId?folderMap.get(folder.parentId):null,name:folder.name,createdAt:folder.createdAt};d.folders.push(next);api.folders.put(next);folderCount++}
+   for(const folder of prepared.folders){const next={id:folderMap.get(folder.id),libraryId:library.id,parentId:folder.parentId?folderMap.get(folder.parentId):null,name:folder.name,createdAt:folder.createdAt,order:folder.order};d.folders.push(next);api.folders.put(next);folderCount++}
    for(const record of prepared.images){if(!d.images.some(i=>i.id===record.image.id)){d.images.push(record.image);api.images.put(record.image)}api.assets.put(record.asset)}
    for(const link of prepared.links){const next={...link,folderId:folderMap.get(link.folderId)};if(d.links.some(l=>l.folderId===next.folderId&&l.imageId===next.imageId))continue;d.links.push(next);api.links.put(next);imageCount++}
    if(!prepared.folders.length){const f={id:crypto.randomUUID(),libraryId:library.id,parentId:null,name:'Minhas referências',createdAt:Date.now()};d.folders.push(f);api.folders.put(f);folderCount++}
-   limits(d);return {libraryId:library.id,name:library.name,folders:folderCount,images:imageCount,failed:prepared.failures?.length||0,failures:prepared.failures||[]};
+   T.validate(d.folders);limits(d);return {libraryId:library.id,name:library.name,folders:folderCount,images:imageCount,failed:prepared.failures?.length||0,failures:prepared.failures||[]};
   });
  }
 
- root.ClickImageLibrary={snapshot,createLibrary,renameLibrary,libraryName,descendants,moveFolder,createFolder,renameFolder,deleteFolders,saveImage,getBlob,renameImage,removeImages,transfer,prepare,identify,folderName,backupData,restore,onChange:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},limits:{MAX_BYTES,MAX_IMAGES,MAX_FOLDERS}};
+ root.ClickImageLibrary={snapshot,groupItems,deleteItems,moveItems,resetAll,createLibrary,renameLibrary,libraryName,descendants,moveFolder,createFolder,renameFolder,deleteFolders,saveImage,getBlob,renameImage,removeImages,transfer,prepare,identify,folderName,backupData,restore,onChange:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},limits:{MAX_BYTES,MAX_IMAGES,MAX_FOLDERS}};
 })(globalThis);

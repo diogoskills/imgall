@@ -1,72 +1,49 @@
 # ClickImage
 
-## Bibliotecas e organização — versão 2.9.0
+## Biblioteca — versão 2.10.0
 
-O painel mantém a coleta temporária por aba. **Biblioteca** abre uma janela independente que pode ficar aberta durante a navegação. O Chrome permite posicioná-la manualmente; não é possível acoplar outra janela ao side panel ou garantir que fique sempre por cima.
+A coleta temporária do painel continua funcionando. A Biblioteca permanente abre em uma janela independente e usa armazenamento local, sem contas, backend ou sincronização em nuvem.
 
-### Grupos → Conjuntos → Itens
+### Exportar Biblioteca .json / Importar Biblioteca .json
 
-Use o seletor **Biblioteca** para alternar entre acervos independentes. **Nova Biblioteca** cria um acervo vazio e o lápis altera seu nome. Cada um tem suas próprias pastas, nomes e referências.
+Os botões agora deixam explícito o formato. O seletor aceita `.json`; o código também verifica extensão, conteúdo e estrutura, rejeitando ZIP mesmo se for renomeado para JSON. Backups JSON v2 da versão anterior continuam válidos; novos backups usam formato **3**.
 
-- **+** na seção **Grupos** cria um grupo no primeiro nível. As pastas existentes da 2.8 viram grupos, mantendo nomes, IDs e imagens.
-- **Novo conjunto** no cabeçalho do grupo cria uma pasta dentro dele. A seta ao lado do grupo expande/recolhe seus conjuntos.
-- Os **itens** são as imagens. Um grupo também pode manter imagens diretamente, preservando a organização anterior. Conjuntos não contêm outros conjuntos.
-- **Mover grupo ou conjunto** permite colocar um conjunto em outro grupo ou no primeiro nível. Ciclos e níveis extras são rejeitados. Renomear/excluir continuam disponíveis; excluir um grupo pede confirmação e também remove seus conjuntos. Imagens referenciadas por outras pastas ou Bibliotecas permanecem disponíveis.
-- Busca por nome na pasta aberta, Grade/Lista, seleção múltipla, nomes editáveis, mover/copiar/remover imagens e abertura local em tamanho natural continuam funcionando.
+O JSON contém o nome da Biblioteca, pastas/subgrupos, IDs, pais, ordem, referências, nomes por pasta, metadados e os bytes originais das imagens em Base64. Não depende de URLs externas. Cada importação cria uma Biblioteca independente de nome único, preservando os acervos existentes. URLs assinadas não são exportadas nem obtidas a partir do arquivo importado.
 
-### Seleção exclusiva de imagens
+A orientação mais recente de aceitar somente JSON prevalece sobre o pedido anterior de escolher ZIP automaticamente. Por isso o backup JSON tem um limite explícito de **16 MB de imagens incorporadas / 28 MB de arquivo**, sem trocar silenciosamente a extensão. Para coleções maiores, use os ZIPs de imagens; eles preservam os arquivos e o manifesto, mas não são aceitos pelo botão Importar Biblioteca .json. Um `manifest.json` extraído de ZIP não contém Base64 e não substitui o backup JSON completo.
 
-Enquanto **Caçar imagem** está ativo, uma camada transparente captura os cliques na página e só aceita imagens/posters identificados. Links, botões, controles de vídeo/áudio, cliques do meio/direito e frames de outras origens não recebem os cliques. O cursor fica bloqueado sobre áreas não selecionáveis e a mensagem orienta a usar **Parar seleção** ou **ESC** para navegar normalmente. Cliques sintéticos disparados pelo site não entram na coleta.
+### ZIPs com manifesto
 
-A rolagem continua disponível, inclusive em contêineres internos. O inspetor lê os elementos reais sob a camada e raízes Shadow DOM abertas. ESC, Parar seleção, fechamento do painel ou desconexão removem o bloqueio e seus listeners. Tab e atalhos do navegador permanecem disponíveis; teclas de ação/edição na página são bloqueadas durante a caça. Vídeos não são capturados como arquivo: somente posters estáticos continuam elegíveis.
+**Baixar .ZIP**, o botão fixo **.ZIP** e o ZIP do botão principal da Biblioteca compartilham a mesma exportação. Agora todos incluem um `manifest.json` interno com versão do formato, hierarquia, arquivos, metadados e relacionamentos. Esse arquivo não é o manifesto da extensão Chrome.
 
-### Salvar pelo painel
+A estrutura de subpastas é preservada, os bytes não são recomprimidos nem redimensionados, e arquivos de mesmo conteúdo entram uma vez por ZIP. Os vínculos em várias pastas continuam registrados no manifesto. Nomes de diretórios/arquivos são tornados seguros e únicos. Selecionar pai e filho não gera ZIPs repetidos. Pastas vazias também podem ser exportadas: o manifesto preserva sua estrutura.
 
-Clique no marcador **Salvar na Biblioteca**, escolha **Biblioteca** e **Pasta de destino**, e confirme. O diálogo mostra `Grupo / Conjunto` e permite criar um grupo. O último destino utilizado é lembrado. Cada cartão mostra salvando, sucesso com pasta/contagem, duplicidade ou erro; um erro não apaga sucessos anteriores. A duplicidade considera o **SHA-256 dos bytes**, sem usar nomes de arquivos. Arquivos diferentes com o mesmo nome podem coexistir.
+Vários grupos selecionados geram um ZIP por raiz, com até **128 MB de imagens + 4 MB de metadados** em cada arquivo. Arquivos locais indisponíveis são registrados e reportados. A exportação valida seu próprio resultado antes de iniciar o download. Mantenha a janela aberta até a conclusão.
 
-A investigação da 2.8 não reproduziu perda no armazenamento com 2, 5 e 10 imagens distintas de nomes iguais, nem com 10 gravações simultâneas. A 2.9 reforça o destino explícito e o feedback individual; esses mesmos cenários são executados na versão nova com PNGs visualmente diferentes. Bloqueio de leitura pelo site (CORS), URL expirada e falta de espaço continuam possíveis e são reportados, sem marcar o item como salvo.
+### Árvore e organização
 
-### ZIPs de imagens
+- Grupos, subgrupos e imagens aparecem em árvore com recuos, linhas-guia, ícones, seleção e contagem de imagens únicas considerando os descendentes.
+- Crie grupos de primeiro nível com **+** e subgrupos dentro de qualquer pasta com o botão correspondente ou o menu de contexto. Até **32 níveis** são permitidos; ciclos, pais inexistentes e nomes duplicados entre irmãos são rejeitados.
+- Expanda/recolha com as setas. A preferência é salva. A árvore carrega inicialmente até 120 referências de imagem; **Mostrar mais itens** revela outras, mantendo todas as pastas disponíveis. A grade mantém seu carregamento progressivo de 60 cartões.
+- **Ctrl + clique** alterna seleção e **Shift + clique** seleciona um intervalo visível. Marcar um grupo inclui sua árvore. As caixas indicam seleção parcial; ao desmarcar um grupo, escolhas explícitas feitas separadamente podem permanecer selecionadas. **Selecionar todas** permite marcar/desmarcar o acervo ativo.
+- A seleção é compartilhada entre árvore e cartões. Downloads, movimentos, agrupamento e exclusão removem sobreposições entre pais/filhos; a quantidade de imagens conta conteúdo único.
+- **Ctrl + G / Agrupar** cria um grupo com os itens selecionados. Em níveis diferentes, usa o ancestral comum mais próximo; sem ancestral comum, cria na raiz. Pais selecionados já englobam seus filhos. A ordem relativa é mantida. Imagens movidas para a mesma pasta são deduplicadas por conteúdo.
+- **Delete** exclui a seleção de imagens ou grupos, com confirmação. Grupos incluem todos os descendentes na confirmação. O atalho não apaga a Biblioteca inteira. Atalhos só são interceptados nas áreas de itens/seleção, não em campos de texto, seletores, diálogos ou no Chrome.
+- O botão direito oferece abrir/expandir, renomear, criar subgrupo, mover, ZIP e excluir para pastas; abrir imagem, copiar URL disponível, mover, agrupar, baixar e excluir para imagens. Campos de texto mantêm seu menu nativo.
 
-Marque grupos/conjuntos na coluna esquerda ou use **Selecionar todas** para marcar/desmarcar todos. O botão **.ZIP**, fixo abaixo da lista e acima do armazenamento, só habilita com seleção. Apenas a lista rola.
+Os cartões mostram a pasta aberta; a árvore e sua contagem deixam visíveis os descendentes. Movimentos e exclusões usam as mesmas funções transacionais, inclusive para ações individuais antigas. Dados do esquema IndexedDB **2** continuam no lugar: não foi necessário recriar o banco. `parentId` já suportava a hierarquia; `order` é opcional e os registros anteriores recebem ordenação estável sem regravação destrutiva.
 
-Cada raiz selecionada gera um ZIP com seu próprio nome. Um grupo inclui as imagens de seus conjuntos em subdiretórios. Se o grupo e um de seus conjuntos estiverem marcados, o conjunto já incluído não gera um segundo download. Cada arquivo idêntico entra uma vez por ZIP; nomes repetidos recebem sufixos. A hierarquia e todas as referências, inclusive cópias em várias pastas, são preservadas integralmente no backup estruturado.
+### Limpeza total, visual e segurança
 
-O botão principal sobre as imagens continua oferecendo arquivos individuais em sequência ou ZIP da seleção. Os dois fluxos usam o mesmo codificador ZIP STORE e o monitor de downloads existentes. Arquivos não são redimensionados ou recomprimidos; erros individuais não interrompem os demais. Pastas vazias são indicadas. Mantenha a janela aberta até finalizar: tarefas de preparação ainda em andamento não são retomadas após fechá-la.
+Em **Gerenciar Bibliotecas (⚙)** → **Apagar todos os dados da Biblioteca**, a interface explica o alcance e exige digitar **APAGAR**. Uma transação limpa todas as Bibliotecas, pastas, arquivos e referências locais e cria a estrutura padrão. Preferências gerais, idioma e arquivos já baixados não são apagados. O novo grupo padrão recebe um ID novo, evitando que um salvamento antigo ainda em processamento repovoe o destino removido.
 
-### Exportar e Importar Biblioteca
+A Grade permite **1, 2 ou 3 colunas**, com preferência salva, espaçamento uniforme e redução automática para janelas estreitas. O modo Lista continua disponível. O Donate mantém o link configurado em `config.js` e recebe brilho suave contínuo, exclusivo desse botão. `prefers-reduced-motion` desativa a animação.
 
-Os dois botões ficam **visíveis acima da pesquisa**, sem menu secundário. Exportam a Biblioteca ativa, sem misturar outros acervos.
+Permanecem as proteções da 2.9: importação atômica, limites de tamanho/resolução, assinatura/MIME/hash dos bytes, Base64 validado, dados importados usados somente como texto, CSP restrita e ausência de requisições para URLs presentes no backup. A revisão está em [SECURITY-REVIEW.md](SECURITY-REVIEW.md). Os dados pertencem ao perfil local do Chrome e podem ser perdidos ao remover a extensão ou excluir seus dados; mantenha backups.
 
-**Exportar Biblioteca** gera `<nome>-backup.json` para até **16 MB de imagens originais**. O JSON contém formato `clickimage-library`, versão **2**, nome/ID da Biblioteca, grupos/conjuntos com IDs e `parentId`, nomes por pasta, referências, datas, formato, MIME, dimensões, tamanho, SHA-256 e o conteúdo dos arquivos em Base64. Base64 não altera a qualidade; os bytes são reconstituídos na importação.
+Limites globais: 50 Bibliotecas, 200 pastas, 5.000 arquivos únicos, 20.000 referências e 512 MB. Novos arquivos da Biblioteca aceitam até 32 MB, 64 MP e 32.768 px por lado. SVG continua fora da Biblioteca; TIF depende do suporte do navegador. Os downloads diretos da coleta anterior continuam disponíveis, sem redimensionamento. A seleção exclusiva de imagens da 2.9 continua bloqueando links/controles de mídia até Parar seleção ou ESC, preservando rolagem.
 
-Acima de 16 MB, o mesmo botão gera automaticamente `<nome>-backup.zip`, com um JSON de metadados e os arquivos originais em `images/<sha256>.<extensão>`. A interface explica a alternativa. Base64 aumenta o arquivo em aproximadamente 33%, e o texto JSON também ocupa memória ao ser serializado; manter os arquivos binários no ZIP reduz esse custo. O ZIP não recomprime imagens. Há um limite de **128 MB de imagens + 4 MB de metadados** por backup; importações JSON aceitam até **28 MB de arquivo** e 16 MB de imagens decodificadas. Ainda não há backup incremental nem streaming.
-
-**Importar Biblioteca** aceita JSON v2, ZIP v2 e backups ZIP v1 feitos pela 2.8. Cada importação cria **uma nova Biblioteca**, mesmo que o nome já exista: `Nome`, `Nome (2)`, `Nome (3)`. Nunca mescla, substitui ou apaga automaticamente a anterior. IDs de Biblioteca/pastas são remapeados, referências são preservadas, e os arquivos de mesmo conteúdo são compartilhados localmente entre acervos para evitar armazenamento redundante.
-
-A estrutura, versão, caminhos ZIP, CRC, Base64, formato real, tamanho, SHA-256 e hierarquia são validados antes da gravação. Formatos desconhecidos, corrupção e hierarquias cíclicas ou com níveis extras são rejeitados. Falhas de quota ou interrupção abortam a transação completa, sem deixar uma Biblioteca parcialmente criada nem alterar as anteriores. Não se executa código importado e não se extrai conteúdo para caminhos do sistema.
-
-Se o arquivo já estiver indisponível no acervo, a exportação registra a referência como `unavailable`, sem inventar conteúdo. Na importação, referências explicitamente indisponíveis são informadas por nome e contagem; somente imagens recuperadas são criadas. Conteúdo presente mas corrompido causa rejeição do backup. **URLs de origem não entram no backup**, pois links assinados podem conter tokens. Se o navegador já conhecer o mesmo arquivo, sua URL existente continua utilizável; caso contrário, copiar URL/Lens ficam desativados após importar, mas visualizar e baixar o arquivo local funcionam.
-
-### Persistência, limites e privacidade
-
-IndexedDB `clickimage-library`, esquema **2**, contém Bibliotecas, pastas, metadados, Blobs e referências. A atualização do esquema 1 ocorre em uma transação de migração que atribui as pastas antigas à Biblioteca principal, sem alterar seus arquivos ou referências. `chrome.storage.local` guarda preferências, destino recente e sinais de atualização. Arquivos não são guardados em localStorage. BroadcastChannel/storage atualizam as interfaces automaticamente.
-
-Os limites são **globais no navegador**, não por Biblioteca: **50 Bibliotecas, 200 grupos/conjuntos, 5.000 arquivos únicos, 20.000 referências e 512 MB**, com até **32 MB por imagem, 64 megapixels e 32.768 px por lado** para novos arquivos. Imagens maiores continuam disponíveis para download direto pelo painel, sem conversão. A quota real depende do navegador/disco. A lista monta 60 cartões por vez com **Mostrar mais imagens** e libera URLs Blob de prévias removidas.
-
-A Biblioteca aceita JPG, PNG, WEBP, AVIF, GIF, BMP, ICO e TIF; a visualização de TIF depende do navegador. SVG permanece fora da Biblioteca por segurança de conteúdo vetorial ativo importado; a coleta/download anteriores continuam funcionando. Não há servidores próprios, contas, sincronização em nuvem, scripts remotos nem novas permissões globais de sites. Os arquivos locais persistem ao reiniciar o navegador, mas remover a extensão, excluir seus dados ou perder o perfil/disco pode apagá-los. Mantenha backups.
-
-### Segurança e alcance dos dados
-
-Cada perfil do Chrome tem seu próprio IndexedDB. Não há banco compartilhado, API própria, contas ou sincronização entre usuários; BroadcastChannel e eventos de storage alcançam somente o contexto da extensão naquele perfil. Uma importação não escreve no navegador de outras pessoas. Um arquivo distribuído a terceiros precisa ser importado por cada destinatário, e por isso também tratamos perda e exposição de dados locais como riscos reais.
-
-Backups são dados: nomes viram texto/valores de campos, nunca HTML executável; URLs de arquivos importados são ignoradas e a restauração não faz requisições externas. Scripts, HTML/SVG ativos, alterações de protótipo, caminhos inseguros e arquivos corrompidos não são executados. A extensão só escreve no seu armazenamento local e nos downloads solicitados. A CSP explícita permite scripts somente do pacote e bloqueia scripts inline, eval, objetos, frames, mudança de base e submissão de formulários. As exceções de rede continuam limitadas às ações já existentes: obter a imagem escolhida, abrir o link Donate/X e abrir Lens após o clique do usuário.
-
-Limites de entradas/tamanho/dimensões, leitura antecipada de dimensões nos cabeçalhos raster comuns e validação sem descompactação de conteúdo comprimido reduzem abuso de memória e ZIP bombs. Uma falha não deve substituir acervos: importações usam transação atômica e Biblioteca nova. Essa revisão não equivale a uma auditoria independente do Chrome, dos codecs nativos ou de futuras funções de backend. Se houver servidores/contas no futuro, exigirão revisão própria de autorização e isolamento.
-
-### Donate, validação e publicação
-
-Os links públicos ficam exclusivamente em `config.js`: Donate abre **https://ko-fi.com/diogoskills** e X abre **https://x.com/diogoskills**. Os botões usam HTML/CSS/SVG próprios, o neon foi preservado e as novas abas usam `noopener noreferrer`. Nenhum widget ou script externo do Ko-fi é carregado.
+### Testes e pacote
 
 ```sh
 npm run check
@@ -75,19 +52,17 @@ node tests/panel.cjs
 node tests/browser.cjs
 node tests/youtube.cjs
 node tests/social.cjs
-npm run test:library
 npm run test:storage
 npm run test:selection
+npm run test:library
 npm run build
 ```
 
-`tests/library-storage.cjs` cria dados com o código real da 2.8, testa migração, bytes, 2/5/10 salvamentos consecutivos e 10 simultâneos nas duas versões, nomes iguais, deduplicação, grupos/conjuntos e reinício do processo de Chromium com o mesmo perfil em disco. `tests/library.cjs` cobre os controles visíveis, salvamento/erros por cartão, contagens, ZIP fixo, seleção, hierarquia, JSON, importações independentes com nomes repetidos, conteúdo indisponível, quota, integridade e persistência. Testes unitários cobrem JSON, ZIP grande, importação legada e rejeições de segurança.
+Os testes usam Chromium, IndexedDB em disco, codecs e eventos físicos reais. APIs Chrome de janelas/downloads/preferências são simuladas; instalação nativa, atualização na máquina do usuário e sites autenticados precisam de homologação manual. A suíte da Biblioteca verifica hierarquia, seleção, atalhos, menus, manifesto ZIP, JSON, limpeza confirmada, colunas, acessibilidade da animação e persistência.
 
-**Limite da validação automatizada:** IndexedDB, arquivos e codecs são reais; as APIs Chrome de janelas/downloads/preferências são simuladas. Instalação nativa, atualização no Chrome do usuário e sites reais autenticados ainda precisam de homologação manual. Fixtures não provam acesso em todos os sites.
+O pacote é **`dist/ClickImage-2.10.0.zip`**, com arquivos necessários e manifesto Chrome na raiz, sem testes, documentos, Git ou dados locais. Nenhuma publicação automática na loja é realizada. Atualize na mesma pasta/ID e use **Recarregar**, sem remover a extensão; feche e reabra as janelas antigas da Biblioteca.
 
-`npm run build` gera **`dist/ClickImage-2.9.0.zip`**, com lista explícita de arquivos e manifesto na raiz, sem testes, documentos, Git, dados locais ou credenciais. Para carregar sem compactação, extraia e escolha a pasta que contém diretamente `manifest.json`. **Atualize na mesma pasta/ID e use Recarregar, sem remover a extensão**, para preservar dados. Feche janelas antigas da Biblioteca e reabra depois da atualização. Nenhuma publicação automática na Chrome Web Store é feita.
-
-O restante deste README registra o seletor, os downloads e decisões de versões anteriores; os fluxos acima prevalecem para as Bibliotecas 2.9.
+O restante deste README descreve o seletor e recursos anteriores; os fluxos acima prevalecem para a Biblioteca 2.10.
 
 
 Extensão Manifest V3 para baixar o recurso de uma imagem selecionada na página, sem screenshots, recortes ou processamento do arquivo. JavaScript puro, HTML5, CSS3 e APIs do Chrome; sem servidor, telemetria ou código remoto; a Biblioteca usa IndexedDB local.

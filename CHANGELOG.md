@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.10.0 — 2026-10-17
+
+- Biblioteca com exportação/importação explicitamente .json, validada no seletor e no conteúdo. A orientação JSON-only substitui a alternância automática para ZIP; JSON até 16 MB de imagens/28 MB de arquivo.
+- Todos os ZIPs da Biblioteca incluem manifest.json validado, árvore completa, vínculos e metadados, com nomes seguros, bytes originais e seleção sem sobreposição.
+- Hierarquia até 32 níveis com guias, recuos, ícones, referências de imagens, contagens e expansão persistida; esquema IndexedDB preservado.
+- Seleção compartilhada, Ctrl/clique, Shift/clique, Ctrl+G no ancestral comum, Delete com confirmação e menus contextuais de grupos/imagens. Operações de mover/excluir reutilizadas nas ações antigas.
+- Limpeza total transacional com confirmação APAGAR, preservando preferências gerais e Downloads.
+- Grade 1/2/3 colunas responsiva e persistida; Donate com animação leve e reduced-motion.
+- Documentação, traduções, testes de hierarquia/seleção/exportação/segurança e pacote atualizados.
+
 ## 2.9.0 — 2026-10-17
 
 - Seleção exclusiva de imagens: bloqueio de interações com links, áudio/vídeo, controles e iframes enquanto ativo; rolagem e Shadow DOM preservados, liberação por ESC/Parar seleção/fechamento do painel, cliques sintéticos ignorados.

@@ -1,4 +1,4 @@
-# Revisão de segurança — ClickImage 2.9.0
+# Revisão de segurança — ClickImage 2.10.0
 
 Escopo: código da extensão, importação/exportação de Bibliotecas, armazenamento local e modo de seleção. Esta é uma revisão de implementação com testes automatizados, não uma auditoria independente do navegador.
 
@@ -29,10 +29,12 @@ A extensão não executa JavaScript, HTML, SVG ou comandos encontrados no backup
 
 - 50 Bibliotecas, 200 grupos/conjuntos, 5.000 arquivos únicos, 20.000 referências, 512 MB locais e 32 MB por imagem.
 - Novos arquivos da Biblioteca: até 64 MP e 32.768 px por lado. Os downloads diretos anteriores não são redimensionados nem limitados por esse decodificador da Biblioteca.
-- JSON: 16 MB de imagens decodificadas e até 28 MB de arquivo; acima de 16 MB a exportação escolhe ZIP com JSON e arquivos binários, até 128 MB de imagens + 4 MB de metadados.
+- JSON: 16 MB de imagens decodificadas e até 28 MB de arquivo; o backup JSON não muda automaticamente de formato; arquivos maiores são recusados com orientação para exportação ZIP separada, até 128 MB de imagens + 4 MB de metadados nos ZIPs de imagens, com manifesto. O botão Importar Biblioteca aceita somente JSON; ZIPs são revalidados internamente durante a própria exportação.
 - Não há descompressor de ZIP arbitrário: apenas STORE, sem expansão de conteúdo comprimido.
 - Cabeçalhos PNG/GIF/BMP/JPEG/WebP recebem inspeção antecipada. A validação dos demais formatos depende também do codec nativo; TIF permanece com visualização dependente do navegador. Não se afirma imunidade a vulnerabilidades do próprio Chromium ou de seus codecs.
 - IndexedDB, armazenamento no disco, imagens, CSP HTTP e eventos físicos são reais nos testes. APIs de janelas/downloads/preferências da extensão são simuladas. A instalação nativa e sites reais autenticados precisam de homologação no Chrome do usuário.
 - A revisão não cobre uma instalação modificada por terceiros, acesso administrativo ao perfil/disco nem futuras integrações de backend. Servidores/contas/pagamentos exigirão revisão própria de autenticação, autorização e isolamento antes de serem integrados.
+
+A árvore tem limite de 32 níveis e valida pais/ciclos. A limpeza total só executa após confirmação APAGAR na interface; o arquivo importado não controla essa operação. IDs novos no estado inicial impedem salvamentos antigos em trânsito de atingir a pasta removida.
 
 Testes relacionados: `npm test`, `tests/library.cjs`, `tests/library-storage.cjs`, `tests/selection-guard.cjs` e regressões do painel/seletor/YouTube/social.
