@@ -69,7 +69,7 @@ function render(value) {
   for(const item of items){
     let card=cards.get(item.id);
     if(!card){
-      card=$('image-template').content.firstElementChild.cloneNode(true);card.dataset.id=item.id;ClickImageI18n.apply(card);
+      card=ClickImageCards.create();card.dataset.id=item.id;
       const input=card.querySelector('.title-input'),img=card.querySelector('.preview');
       input.addEventListener('change',()=>command('CLICKIMAGE_RENAME',{itemId:item.id,title:input.value}));
       input.addEventListener('keydown',event=>{if(event.key==='Enter')input.blur()});
@@ -79,6 +79,7 @@ function render(value) {
       card.querySelector('.reverse-search').addEventListener('click',()=>{
         chrome.tabs.create({url:ClickImageActions.reverseSearchURL(card._item.url)}).catch(()=>notice(t('Não foi possível abrir a pesquisa reversa.')));
       });
+      ClickImageLibraryPanel.addSaveButton(card,()=>({...card._item,title:input.value}));
       card.querySelector('.open-image').addEventListener('click',()=>openImage(item.id));
       card.querySelector('.convert-png').addEventListener('click',async()=>{
         const targetTab=tabId;if(converting.has(item.id))return;converting.add(item.id);render(collection);
@@ -161,21 +162,7 @@ async function openImage(itemId){
   else if(!response.zoomSet)notice(t('Imagem aberta. O Chrome não permitiu ajustar o zoom desta aba.'));
  }catch{notice(t('Não foi possível abrir a imagem.'))}
 }
-async function saveArchive(blob,signal){
- const url=URL.createObjectURL(blob);let id,timer;
- try{
-  id=await chrome.downloads.download({url,filename:'ClickImage.zip',conflictAction:'uniquify',saveAs:false});
-  await new Promise((resolve,reject)=>{
-   let settled=false;
-   const clean=()=>{settled=true;clearTimeout(timer);signal.removeEventListener('abort',cancel);chrome.downloads.onChanged.removeListener(changed)};
-   const finish=state=>{if(state==='complete'){clean();resolve()}else if(state==='interrupted'){clean();reject(new Error('Download do ZIP interrompido. Confira os downloads do Chrome.'))}};
-   const cancel=()=>{clean();reject(new DOMException(t('ZIP cancelado.'),'AbortError'))};
-   const changed=delta=>{if(delta.id===id)finish(delta.state?.current)};
-   async function poll(){try{const [download]=await chrome.downloads.search({id});if(!download)throw new Error('Download não encontrado.');finish(download.state);if(!settled && download.state==='in_progress')timer=setTimeout(poll,2000)}catch{clean();reject(new Error('Não foi possível conferir o download do ZIP.'))}}
-   chrome.downloads.onChanged.addListener(changed);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();else void poll();
-  });
- }finally{clearTimeout(timer);URL.revokeObjectURL(url)}
-}
+async function saveArchive(blob,signal){return ClickImageFiles.save(blob,'ClickImage.zip',{signal})}
 $('batch-zip').addEventListener('click',async()=>{
  if(zipJob || batchRequest || $('download-all').disabled)return;
  const targetTab=tabId,job=new AbortController();zipJob=job;
@@ -213,3 +200,6 @@ function applyLanguage(){
 $('language').addEventListener('change',()=>{ClickImageI18n.setLanguage($('language').value).catch(error=>notice(error.message))});
 ClickImageI18n.onChange(applyLanguage);
 ClickImageI18n.ready.then(applyLanguage);
+
+ClickImageFiles.links();
+$('open-library').addEventListener('click',()=>ClickImageLibraryPanel.open().catch(error=>notice(error.message)));

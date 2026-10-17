@@ -62,6 +62,6 @@
   if(!entries.length)throw new Error('Nenhuma imagem pôde ser obtida para o ZIP. '+(failures[0]?.error || ''));
   return {blob:archive(entries),included:entries.length,failures};
  }
- root.ClickImageZip={build,archive,crc32,uniqueName};
+ root.ClickImageZip={build,archive,crc32,uniqueName,readImage,MAX_FILE,MAX_TOTAL};
  if(typeof module!=='undefined')module.exports=root.ClickImageZip;
 })(globalThis);

@@ -647,6 +647,312 @@
   "es": " · {count} no incluidas: "
  }
 };
+ Object.assign(messages,{
+ "Biblioteca": {
+  "en": "Library",
+  "es": "Biblioteca"
+ },
+ "Referências permanentes ↗": {
+  "en": "Permanent references ↗",
+  "es": "Referencias permanentes ↗"
+ },
+ "Salvar na Biblioteca": {
+  "en": "Save to Library",
+  "es": "Guardar en la Biblioteca"
+ },
+ "Pasta de destino": {
+  "en": "Destination folder",
+  "es": "Carpeta de destino"
+ },
+ "Nova pasta": {
+  "en": "New folder",
+  "es": "Nueva carpeta"
+ },
+ "Nome da pasta": {
+  "en": "Folder name",
+  "es": "Nombre de la carpeta"
+ },
+ "Cancelar": {
+  "en": "Cancel",
+  "es": "Cancelar"
+ },
+ "Salvar": {
+  "en": "Save",
+  "es": "Guardar"
+ },
+ "Salvando original…": {
+  "en": "Saving original…",
+  "es": "Guardando original…"
+ },
+ "A imagem já está nesta pasta.": {
+  "en": "This image is already in this folder.",
+  "es": "Esta imagen ya está en esta carpeta."
+ },
+ "Imagem salva na Biblioteca.": {
+  "en": "Image saved to Library.",
+  "es": "Imagen guardada en la Biblioteca."
+ },
+ "BIBLIOTECA DE REFERÊNCIAS": {
+  "en": "REFERENCE LIBRARY",
+  "es": "BIBLIOTECA DE REFERENCIAS"
+ },
+ "Menu da Biblioteca": {
+  "en": "Library menu",
+  "es": "Menú de la Biblioteca"
+ },
+ "Exportar Biblioteca": {
+  "en": "Export Library",
+  "es": "Exportar Biblioteca"
+ },
+ "Importar Biblioteca": {
+  "en": "Import Library",
+  "es": "Importar Biblioteca"
+ },
+ "Exportar pastas em ZIPs": {
+  "en": "Export folders as ZIPs",
+  "es": "Exportar carpetas como ZIP"
+ },
+ "Faça backup das suas referências para restaurá-las em outro navegador ou computador. Seus dados são armazenados localmente.": {
+  "en": "Back up your references to restore them in another browser or computer. Your data is stored locally.",
+  "es": "Haz una copia de tus referencias para restaurarlas en otro navegador u ordenador. Tus datos se guardan localmente."
+ },
+ "PASTAS": {
+  "en": "FOLDERS",
+  "es": "CARPETAS"
+ },
+ "Marque pastas para exportar ZIPs separados.": {
+  "en": "Check folders to export separate ZIPs.",
+  "es": "Marca carpetas para exportar ZIP separados."
+ },
+ "Pastas da Biblioteca": {
+  "en": "Library folders",
+  "es": "Carpetas de la Biblioteca"
+ },
+ "Pesquisar imagens pelo nome": {
+  "en": "Search images by name",
+  "es": "Buscar imágenes por nombre"
+ },
+ "Baixar imagens": {
+  "en": "Download images",
+  "es": "Descargar imágenes"
+ },
+ "Baixar ZIP": {
+  "en": "Download ZIP",
+  "es": "Descargar ZIP"
+ },
+ "Renomear pasta": {
+  "en": "Rename folder",
+  "es": "Renombrar carpeta"
+ },
+ "Excluir pasta": {
+  "en": "Delete folder",
+  "es": "Eliminar carpeta"
+ },
+ "Selecionar todas": {
+  "en": "Select all",
+  "es": "Seleccionar todas"
+ },
+ "Selecionar imagem": {
+  "en": "Select image",
+  "es": "Seleccionar imagen"
+ },
+ "Organizar": {
+  "en": "Organize",
+  "es": "Organizar"
+ },
+ "Copiar para pasta": {
+  "en": "Copy to folder",
+  "es": "Copiar a carpeta"
+ },
+ "Mover para pasta": {
+  "en": "Move to folder",
+  "es": "Mover a carpeta"
+ },
+ "Excluir selecionadas": {
+  "en": "Delete selected",
+  "es": "Eliminar seleccionadas"
+ },
+ "Imagens da Biblioteca": {
+  "en": "Library images",
+  "es": "Imágenes de la Biblioteca"
+ },
+ "Um lugar para suas referências.": {
+  "en": "A home for your references.",
+  "es": "Un lugar para tus referencias."
+ },
+ "Use “Salvar na Biblioteca” nas imagens do painel lateral. Os arquivos originais ficam guardados aqui.": {
+  "en": "Use “Save to Library” on images in the side panel. Original files are stored here.",
+  "es": "Usa “Guardar en la Biblioteca” en las imágenes del panel lateral. Los archivos originales se guardan aquí."
+ },
+ "Mostrar mais imagens": {
+  "en": "Show more images",
+  "es": "Mostrar más imágenes"
+ },
+ "Suas referências são armazenadas localmente neste navegador. Não utilizamos contas nem sincronização em nuvem.": {
+  "en": "Your references are stored locally in this browser. We do not use accounts or cloud sync.",
+  "es": "Tus referencias se guardan localmente en este navegador. No usamos cuentas ni sincronización en la nube."
+ },
+ "Remover a extensão ou excluir seus dados pode apagar a Biblioteca. Mantenha um backup.": {
+  "en": "Removing the extension or clearing its data can erase the Library. Keep a backup.",
+  "es": "Eliminar la extensión o borrar sus datos puede borrar la Biblioteca. Guarda una copia de seguridad."
+ },
+ "Os arquivos serão validados antes de alterar seus dados.": {
+  "en": "Files will be validated before changing your data.",
+  "es": "Los archivos se validarán antes de modificar tus datos."
+ },
+ "Mesclar — preservar dados e evitar duplicidades": {
+  "en": "Merge — keep data and avoid duplicates",
+  "es": "Combinar — conservar datos y evitar duplicados"
+ },
+ "Substituir — apagar a Biblioteca atual e restaurar o backup": {
+  "en": "Replace — erase the current Library and restore the backup",
+  "es": "Reemplazar — borrar la Biblioteca actual y restaurar la copia"
+ },
+ "Importar": {
+  "en": "Import",
+  "es": "Importar"
+ },
+ "Exportar pasta {name}": {
+  "en": "Export folder {name}",
+  "es": "Exportar carpeta {name}"
+ },
+ "{count} selecionadas": {
+  "en": "{count} selected",
+  "es": "{count} seleccionadas"
+ },
+ "Original salvo localmente": {
+  "en": "Original stored locally",
+  "es": "Original guardado localmente"
+ },
+ "URL de origem não incluída no backup.": {
+  "en": "Source URL is not included in the backup.",
+  "es": "La URL de origen no se incluye en la copia."
+ },
+ "Processando {finished} de {total}…": {
+  "en": "Processing {finished} of {total}…",
+  "es": "Procesando {finished} de {total}…"
+ },
+ "Concluído: {count} imagens.": {
+  "en": "Done: {count} images.",
+  "es": "Completado: {count} imágenes."
+ },
+ "Falhas: {count}": {
+  "en": "Failures: {count}",
+  "es": "Errores: {count}"
+ },
+ "Excluir esta pasta e suas referências? As outras pastas serão preservadas.": {
+  "en": "Delete this folder and its references? Other folders will be kept.",
+  "es": "¿Eliminar esta carpeta y sus referencias? Se conservarán las otras carpetas."
+ },
+ "Excluir as imagens selecionadas desta pasta?": {
+  "en": "Delete selected images from this folder?",
+  "es": "¿Eliminar las imágenes seleccionadas de esta carpeta?"
+ },
+ "Organização concluída.": {
+  "en": "Organization complete.",
+  "es": "Organización completada."
+ },
+ "Pasta vazia.": {
+  "en": "Empty folder.",
+  "es": "Carpeta vacía."
+ },
+ "ZIPs salvos: {count}": {
+  "en": "ZIPs saved: {count}",
+  "es": "ZIP guardados: {count}"
+ },
+ "Salvando backup…": {
+  "en": "Saving backup…",
+  "es": "Guardando copia…"
+ },
+ "Backup salvo. Guarde este arquivo em um local seguro.": {
+  "en": "Backup saved. Keep this file in a safe place.",
+  "es": "Copia guardada. Guarda este archivo en un lugar seguro."
+ },
+ "Apagar toda a Biblioteca atual e substituí-la pelo backup? Esta ação só acontece após a validação completa.": {
+  "en": "Erase the entire current Library and replace it with the backup? This only happens after full validation.",
+  "es": "¿Borrar toda la Biblioteca actual y reemplazarla con la copia? Esto solo ocurre tras la validación completa."
+ },
+ "Validando {finished} de {total}…": {
+  "en": "Validating {finished} of {total}…",
+  "es": "Validando {finished} de {total}…"
+ },
+ "Restauradas: {folders} pastas, {images} imagens. Duplicidades evitadas: {duplicates}.": {
+  "en": "Restored: {folders} folders, {images} images. Duplicates avoided: {duplicates}.",
+  "es": "Restauradas: {folders} carpetas, {images} imágenes. Duplicados evitados: {duplicates}."
+ },
+ "Digite um nome de pasta de até 80 caracteres.": {
+  "en": "Enter a folder name up to 80 characters.",
+  "es": "Escribe un nombre de carpeta de hasta 80 caracteres."
+ },
+ "Já existe uma pasta com esse nome.": {
+  "en": "A folder with this name already exists.",
+  "es": "Ya existe una carpeta con ese nombre."
+ },
+ "Pasta não encontrada.": {
+  "en": "Folder not found.",
+  "es": "Carpeta no encontrada."
+ },
+ "O arquivo local está indisponível. Restaure um backup.": {
+  "en": "The local file is unavailable. Restore a backup.",
+  "es": "El archivo local no está disponible. Restaura una copia."
+ },
+ "Cada imagem da Biblioteca deve ter até 32 MB.": {
+  "en": "Each Library image must be up to 32 MB.",
+  "es": "Cada imagen de la Biblioteca debe tener hasta 32 MB."
+ },
+ "Arquivo de imagem inválido ou formato não suportado na Biblioteca.": {
+  "en": "Invalid image or format not supported in the Library.",
+  "es": "Imagen inválida o formato no compatible con la Biblioteca."
+ },
+ "Backup inválido, corrompido ou de versão não suportada.": {
+  "en": "Invalid, damaged or unsupported backup version.",
+  "es": "Copia inválida, dañada o de versión no compatible."
+ },
+ "A substituição exige confirmação explícita.": {
+  "en": "Replacement requires explicit confirmation.",
+  "es": "El reemplazo requiere confirmación explícita."
+ },
+ "O backup excede o limite de 128 MB de imagens.": {
+  "en": "The backup exceeds the 128 MB image limit.",
+  "es": "La copia supera el límite de 128 MB de imágenes."
+ },
+ "O backup aceita até 128 MB.": {
+  "en": "Backups support up to 128 MB.",
+  "es": "Las copias admiten hasta 128 MB."
+ },
+ "Não foi possível gravar. O armazenamento local pode estar cheio. Exporte um backup ou libere espaço.": {
+  "en": "Could not save. Local storage may be full. Export a backup or free up space.",
+  "es": "No se pudo guardar. El almacenamiento local puede estar lleno. Exporta una copia o libera espacio."
+ },
+ "Limite da Biblioteca: 200 pastas, 5.000 imagens, 20.000 referências e 512 MB. Exporte um backup ou remova referências.": {
+  "en": "Library limit: 200 folders, 5,000 images, 20,000 references and 512 MB. Export a backup or remove references.",
+  "es": "Límite de la Biblioteca: 200 carpetas, 5.000 imágenes, 20.000 referencias y 512 MB. Exporta una copia o elimina referencias."
+ },
+ "A alteração foi cancelada. Os dados anteriores foram preservados.": {
+  "en": "The change was canceled. Previous data was preserved.",
+  "es": "Se canceló el cambio. Se conservaron los datos anteriores."
+ },
+ "O backup aceita até 128 MB. Exporte pastas separadamente para guardar as imagens.": {
+  "en": "Backups support up to 128 MB. Export folders separately to save images.",
+  "es": "Las copias admiten hasta 128 MB. Exporta carpetas por separado para guardar las imágenes."
+ },
+ "Metadados do backup excederam o limite.": {
+  "en": "Backup metadata exceeded the limit.",
+  "es": "Los metadatos de la copia superaron el límite."
+ },
+ "Download interrompido. Confira os downloads do Chrome.": {
+  "en": "Download interrupted. Check Chrome downloads.",
+  "es": "Descarga interrumpida. Revisa las descargas de Chrome."
+ },
+ "Não foi possível conferir o download.": {
+  "en": "Could not check the download.",
+  "es": "No se pudo comprobar la descarga."
+ },
+ "Cancelado.": {
+  "en": "Canceled.",
+  "es": "Cancelado."
+ }
+});
  const languages=['pt-BR','en','es'];let language='pt-BR';const listeners=new Set();
  function t(source,values={}){
   if(typeof source!=='string')return source || '';
@@ -666,7 +972,7 @@
   try{await root.chrome?.storage?.local?.set({clickimageLanguage:language})}catch{throw new Error('Não foi possível salvar o idioma.')}
  }
  const originals=new WeakMap();
- const dynamic='#feedback,#batch-progress,#status-label,#count,#empty-title,#empty-description,#select,#download-all,.source,.dimensions,.item-status,.item-error,.download,.convert-png';
+ const dynamic='#feedback,#batch-progress,#status-label,#count,#empty-title,#empty-description,#select,#download-all,.source,.dimensions,.item-status,.item-error,.download,.convert-png,#folder-title,#folders,#destination,#storage-usage,#folder-count,#library-feedback,#selection-count';
  function apply(scope){
   if(!scope)return;
   const document=scope.ownerDocument || scope;
